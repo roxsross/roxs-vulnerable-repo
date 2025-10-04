@@ -1,4 +1,4 @@
-FROM node:16.4.0-bullseye-slim
+FROM node:16
 
 LABEL org.opencontainers.image.title="Vulnerable Node App" \
       org.opencontainers.image.description="Enhanced secure build of vulnerable-node for security testing" \
