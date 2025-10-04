@@ -1,4 +1,4 @@
-FROM node:16
+FROM node:22-alpine
 
 LABEL org.opencontainers.image.title="Vulnerable Node App" \
       org.opencontainers.image.description="Enhanced secure build of vulnerable-node for security testing" \
