@@ -21,8 +21,6 @@ jobs:
         uses: actions/checkout@v4
       - name: Run gitleaks scanner
         uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --source . --report-format sarif --report-path gitleaks-results.sarif
         continue-on-error: true
       - name: Upload Gitleaks scan results
         uses: github/codeql-action/upload-sarif@v3
