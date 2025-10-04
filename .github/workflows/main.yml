@@ -13,14 +13,29 @@ permissions:
   pull-requests: write
 jobs:
 
+  secret_Scan:
+    name: Gitleak Scan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run gitleaks scanner
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --report-format sarif --report-path gitleaks-results.sarif
+        continue-on-error: true
+      - name: Upload Gitleaks scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+            sarif_file: gitleaks-results.sarif
+            category: gitleaks
+
   Snyk_Scan:
     name: Snyk Scan
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Build an image from Dockerfile
-        run: docker build -t docker.io/roxsross12/roxs-vulnerable-repo:${{ github.sha }} .
       - name: Run Snyk vulnerability scanner
         uses: snyk/actions/node@master
         env:
