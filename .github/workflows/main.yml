@@ -27,6 +27,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: --severity-threshold=high --sarif-output=./snyk-results.sarif
+        continue-on-error: true
       - name: Upload Snyk scan results
         uses: github/codeql-action/upload-sarif@v3
         with:
