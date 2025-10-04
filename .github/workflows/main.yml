@@ -8,6 +8,12 @@ jobs:
   Trivy_Scan:
     name: Trivy Scan
     runs-on: ubuntu-24.04
+    permissions:
+      # required for all workflows
+      security-events: write
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,4 +33,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
             sarif_file: trivy-results.sarif
-            category: trivy-results
+            category: trivy
