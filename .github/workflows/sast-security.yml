@@ -28,8 +28,6 @@ jobs:
       uses: PyCQA/bandit-action@v1
       with:
         configfile: .bandit
-        severity: low
-        confidence: low
         
     - name: Upload Bandit Results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3

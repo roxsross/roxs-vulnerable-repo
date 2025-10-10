@@ -1,6 +1,3 @@
 [bandit]
-# Configuración de Bandit para VAmPI - Aplicación intencionalmente vulnerable
 exclude_dirs = .git,__pycache__,.pytest_cache,venv,env
-
-# Continuar en caso de errores 
 exit_zero = true
