@@ -35,9 +35,9 @@ jobs:
         
     - name: Run Bandit Security Scan
       run: |
-        bandit -r . -f json -o bandit-report.json -ll -i
+        bandit -r . -f json -o bandit-report.json -ll -i --exit-zero
         echo "Bandit scan completed - issues found are expected in VAmPI (vulnerable by design)"
-        bandit -r . -f txt -ll -i || echo "Bandit found vulnerabilities (expected for VAmPI)"
+        bandit -r . -f txt -ll -i --exit-zero || echo "Bandit found vulnerabilities (expected for VAmPI)"
         
     - name: Upload Bandit Results
       uses: actions/upload-artifact@v4
@@ -98,6 +98,7 @@ jobs:
   safety-check:
     name: Safety Dependency Check
     runs-on: ubuntu-latest
+    continue-on-error: true
     
     steps:
     - name: Checkout code
@@ -113,8 +114,9 @@ jobs:
       
     - name: Check dependencies for vulnerabilities
       run: |
-        safety check -r requirements.txt --json --output safety-report.json || true
-        safety check -r requirements.txt
+        safety scan -r requirements.txt --output json > safety-report.json || true
+        echo "Safety scan completed - vulnerabilities found are expected in VAmPI (vulnerable by design)"
+        safety scan -r requirements.txt || echo "Safety found vulnerabilities (expected for VAmPI)"
         
     - name: Upload Safety Results
       uses: actions/upload-artifact@v4
