@@ -48,33 +48,8 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: semgrep-results-json
+        name: semgrep-results
         path: semgrep-report.json
-
-  codeql-scan:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Run CodeQL CLI
-      run: |
-        wget -q https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-linux64.tar.gz
-        tar -xzf codeql-linux64.tar.gz
-        ./codeql/codeql database create codeql-db --language=python
-        ./codeql/codeql database analyze codeql-db --format=json --output=codeql-report.json || true
-        
-    - name: Upload JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: codeql-results-json
-        path: codeql-report.json
 
   safety-scan:
     name: Safety Dependency Check
@@ -96,7 +71,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: safety-results-json
+        name: safety-results
         path: safety-report.json
 
   pip-audit-scan:
@@ -119,7 +94,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: pip-audit-results-json
+        name: pip-audit-results
         path: pip-audit-report.json
 
   gitleaks-scan:
@@ -131,19 +106,9 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        
-    - name: Run GitLeaks
-      run: |
-        wget -q -O gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz
-        tar -xzf gitleaks.tar.gz && chmod +x gitleaks
-        ./gitleaks detect --source . --report-format json --report-path gitleaks-report.json || true
-        
-    - name: Upload JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: gitleaks-results-json
-        path: gitleaks-report.json
+    - uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   trivy-scan:
     name: Trivy Security Scan
@@ -164,5 +129,5 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: trivy-results-json
+        name: trivy-results
         path: trivy-report.json
