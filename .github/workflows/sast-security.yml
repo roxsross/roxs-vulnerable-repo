@@ -35,9 +35,9 @@ jobs:
         
     - name: Run Bandit Security Scan
       run: |
-        bandit -r . -f json -o bandit-report.json
+        bandit -r . -f json -o bandit-report.json -ll -i
         echo "Bandit scan completed - issues found are expected in VAmPI (vulnerable by design)"
-        bandit -r . -f txt || echo "Bandit found vulnerabilities (expected for VAmPI)"
+        bandit -r . -f txt -ll -i || echo "Bandit found vulnerabilities (expected for VAmPI)"
         
     - name: Upload Bandit Results
       uses: actions/upload-artifact@v4
