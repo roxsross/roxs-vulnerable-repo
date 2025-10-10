@@ -24,6 +24,7 @@ jobs:
       run: |
         pip install bandit
         bandit -r . -f json -o bandit-report.json -ll -i || true
+        cat bandit-report.json
         
     - name: Upload JSON
       uses: actions/upload-artifact@v4
@@ -62,10 +63,12 @@ jobs:
       with:
         python-version: '3.11'
         
-    - name: Run Safety
-      run: |
-        pip install safety
-        safety scan -r requirements.txt --output json > safety-report.json || true
+    - name: Run Safety CLI to check for vulnerabilities
+      uses: pyupio/safety-action@v1
+      with:
+        api-key: ${{ secrets.SAFETY_API_KEY }}
+        output-format: json
+        args: "--save-as json safety-report.json"
         
     - name: Upload JSON
       uses: actions/upload-artifact@v4
