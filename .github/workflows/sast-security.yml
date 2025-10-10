@@ -27,7 +27,8 @@ jobs:
     - name: Run Bandit Security Scan
       uses: PyCQA/bandit-action@v1
       with:
-        configfile: .bandit
+        targets: "."
+        exclude: ".git,__pycache__,.pytest_cache,venv,env"
         
     - name: Upload Bandit Results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
