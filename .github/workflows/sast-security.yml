@@ -27,16 +27,16 @@ jobs:
     - name: Run Bandit Security Scan
       uses: PyCQA/bandit-action@v1
       with:
-        path: "."
-        level: low
+        configfile: .bandit
+        severity: low
         confidence: low
-        exit_zero: true
         
     - name: Upload Bandit Results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
         sarif_file: results.sarif
+        category: bandit
 
   semgrep-scan:
     name: Semgrep Security Scan
@@ -61,6 +61,7 @@ jobs:
       if: always()
       with:
         sarif_file: 'semgrep-results.sarif'
+        category: semgrep
         
     - name: Upload Semgrep JSON Results
       uses: actions/upload-artifact@v4
@@ -102,18 +103,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Run Safety Security Scan
+      uses: pyupio/safety-action@v1
       with:
-        python-version: '3.11'
-        
-    - name: Install Safety
-      run: pip install safety
-      
-    - name: Check dependencies for vulnerabilities
-      run: |
-        safety scan -r requirements.txt --output json > safety-report.json || true
-        echo "Safety scan completed - vulnerabilities found are expected in VAmPI (vulnerable by design)"
+        api-key: ${{ secrets.SAFETY_API_KEY }}
+        scan: requirements.txt
         
     - name: Upload Safety Results
       uses: actions/upload-artifact@v4
@@ -188,6 +182,7 @@ jobs:
       if: always()
       with:
         sarif_file: 'trivy-results.sarif'
+        category: trivy
         
     - name: Generate Trivy JSON report
       uses: aquasecurity/trivy-action@master
