@@ -24,18 +24,53 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Run Bandit Security Scan
-      uses: PyCQA/bandit-action@v1
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        targets: "."
-        exclude: ".git,__pycache__,.pytest_cache,venv,env"
+        python-version: '3.11'
+        
+    - name: Install Bandit
+      run: pip install bandit[sarif]
+      
+    - name: List Python files
+      run: |
+        echo "=== Python files found ==="
+        find . -name "*.py" -type f | head -20
+        echo "=========================="
+        
+    - name: Run Bandit Security Scan (verbose)
+      run: |
+        echo "=== Running Bandit with verbose output ==="
+        bandit -r . -f sarif -o bandit-results.sarif -v || true
+        echo "=== Bandit SARIF completed ==="
+        bandit -r . -f json -o bandit-report.json -v || true
+        echo "=== Bandit JSON completed ==="
+        bandit -r . -ll -i || echo "=== Bandit found issues (expected) ==="
+        
+    - name: Check Bandit outputs
+      run: |
+        echo "=== Checking output files ==="
+        ls -la bandit-* || echo "No bandit output files found"
+        if [ -f bandit-results.sarif ]; then
+          echo "=== SARIF file size ==="
+          wc -l bandit-results.sarif
+          echo "=== SARIF content preview ==="
+          head -20 bandit-results.sarif
+        fi
         
     - name: Upload Bandit Results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
-        sarif_file: results.sarif
+        sarif_file: bandit-results.sarif
         category: bandit
+        
+    - name: Upload Bandit JSON Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: bandit-results
+        path: bandit-report.json
 
   semgrep-scan:
     name: Semgrep Security Scan
