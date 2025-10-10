@@ -1,0 +1,68 @@
+rules:
+  - id: flask-debug-enabled
+    patterns:
+      - pattern: app.run(..., debug=True, ...)
+      - pattern: app.run(debug=True)
+    message: Flask debug mode is enabled, which can expose sensitive information
+    languages: [python]
+    severity: ERROR
+    
+  - id: hardcoded-secret-key
+    patterns:
+      - pattern: app.secret_key = "..."
+      - pattern: SECRET_KEY = "..."
+    message: Hardcoded secret key detected
+    languages: [python]
+    severity: ERROR
+    
+  - id: sql-injection-risk
+    patterns:
+      - pattern: |
+          $QUERY = "..." + $VAR + "..."
+          $DB.execute($QUERY)
+      - pattern: |
+          $DB.execute("..." + $VAR + "...")
+    message: Potential SQL injection vulnerability
+    languages: [python]
+    severity: ERROR
+    
+  - id: weak-jwt-secret
+    patterns:
+      - pattern: jwt.encode(..., key="...", ...)
+      - pattern: jwt.decode(..., key="...", ...)
+    message: Weak or hardcoded JWT secret key
+    languages: [python]
+    severity: WARNING
+    
+  - id: flask-cors-wildcard
+    patterns:
+      - pattern: CORS($APP, origins="*")
+      - pattern: cross_origin(origins="*")
+    message: CORS configured with wildcard origin
+    languages: [python]
+    severity: WARNING
+    
+  - id: unsafe-deserialization
+    patterns:
+      - pattern: pickle.loads($VAR)
+      - pattern: pickle.load($VAR)
+      - pattern: yaml.load($VAR)
+    message: Unsafe deserialization detected
+    languages: [python]
+    severity: ERROR
+    
+  - id: weak-random
+    patterns:
+      - pattern: random.random()
+      - pattern: random.randint(...)
+    message: Use of weak random number generator for security purposes
+    languages: [python]
+    severity: WARNING
+    
+  - id: eval-usage
+    patterns:
+      - pattern: eval($VAR)
+      - pattern: exec($VAR)
+    message: Use of eval() or exec() can lead to code injection
+    languages: [python]
+    severity: ERROR

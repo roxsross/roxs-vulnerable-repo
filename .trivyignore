@@ -1,0 +1,29 @@
+# Trivy ignore file para VAmPI
+# Como VAmPI es intencionalmente vulnerable, algunos CVEs pueden ser ignorados para testing
+
+# Ignorar vulnerabilidades específicas si son parte del diseño educativo
+# Ejemplo: CVE-2019-8341 (Jinja2 - solo si es intencional para el lab)
+# CVE-2019-8341
+
+# Ignorar archivos de test y documentación
+**/*test*
+**/test_*
+**/*_test*
+**/tests/*
+**/docs/*
+**/*.md
+**/*.txt
+**/*.rst
+
+# Ignorar archivos de configuración que no son parte del runtime
+.git/**
+.github/**
+**/.gitignore
+**/Dockerfile*
+**/docker-compose*
+**/*.yml
+**/*.yaml
+
+# Ignorar dependencias de desarrollo (si las hay)
+**/requirements-dev.txt
+**/dev-requirements.txt

@@ -1,0 +1,59 @@
+# Configuración de GitLeaks para VAmPI
+title = "VAmPI GitLeaks Configuration"
+
+[extend]
+# Usar configuración base de GitLeaks
+useDefault = true
+
+[[rules]]
+id = "flask-secret-key"
+description = "Flask Secret Key"
+regex = '''(?i)(secret_key|SECRET_KEY)\s*=\s*['""][^'""]{8,}['""]'''
+tags = ["flask", "secret"]
+
+[[rules]]
+id = "jwt-secret"
+description = "JWT Secret"
+regex = '''(?i)(jwt_secret|JWT_SECRET|jwt_key|JWT_KEY)\s*=\s*['""][^'""]{8,}['""]'''
+tags = ["jwt", "secret"]
+
+[[rules]]
+id = "database-password"
+description = "Database Password"
+regex = '''(?i)(db_pass|database_password|DB_PASSWORD)\s*=\s*['""][^'""]{4,}['""]'''
+tags = ["database", "password"]
+
+[[rules]]
+id = "api-key"
+description = "API Key"
+regex = '''(?i)(api_key|API_KEY|apikey|APIKEY)\s*=\s*['""][^'""]{16,}['""]'''
+tags = ["api", "key"]
+
+[[rules]]
+id = "hardcoded-password"
+description = "Hardcoded Password"
+regex = '''(?i)(password|passwd|pwd)\s*=\s*['""][^'""]{4,}['""]'''
+tags = ["password"]
+
+[allowlist]
+description = "Allowlist for VAmPI test files"
+files = [
+    '''(?i)test.*\.py$''',
+    '''(?i).*test\.py$''',
+    '''(?i).*_test\.py$''',
+    '''README\.md$''',
+    '''\.md$'''
+]
+
+paths = [
+    '''tests/''',
+    '''test/''',
+    '''.git/'''
+]
+
+regexes = [
+    '''(?i)example''',
+    '''(?i)dummy''',
+    '''(?i)test''',
+    '''(?i)placeholder'''
+]
