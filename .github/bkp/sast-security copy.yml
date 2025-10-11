@@ -24,6 +24,7 @@ jobs:
       run: |
         pip install bandit
         bandit -r . -f json -o bandit-report.json -ll -i || true
+        cat bandit-report.json
         
     - name: Upload JSON
       uses: actions/upload-artifact@v4
@@ -48,7 +49,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: semgrep-results-json
+        name: semgrep-results
         path: semgrep-report.json
 
   safety-scan:
@@ -58,10 +59,9 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    - name: Run Safety
-      uses: pyupio/safety-action@v1
+    - uses: actions/setup-python@v4
       with:
-        scan: requirements.txt
+        python-version: '3.11'
         
     - name: Run Safety CLI to check for vulnerabilities
       uses: pyupio/safety-action@v1
@@ -70,12 +70,12 @@ jobs:
         output-format: json
         args: --detailed-output --output-format json
       continue-on-error: true
-        
+
     - name: Upload JSON
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: safety-results-json
+        name: safety-results
         path: safety-report.json
 
   pip-audit-scan:
@@ -98,7 +98,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: pip-audit-results-json
+        name: pip-audit-results
         path: pip-audit-report.json
 
   gitleaks-scan:
@@ -106,23 +106,13 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     
-    steps:
-    - uses: actions/checkout@v4
+    - name: Run Safety CLI to check for vulnerabilities
+      uses: pyupio/safety-action@v1
       with:
-        fetch-depth: 0
-        
-    - name: Run GitLeaks
-      uses: gitleaks/gitleaks-action@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
-        
-    - name: Upload JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: gitleaks-results-json
-        path: gitleaks-report.json
+        api-key: ${{ secrets.SAFETY_API_KEY }}
+        output-format: json
+        args: --detailed-output --output-format json
+      continue-on-error: true
 
   trivy-fs-scan:
     name: Trivy Filesystem Scan
@@ -171,58 +161,3 @@ jobs:
       with:
         name: trivy-image-results-json
         path: trivy-image-report.json
-
-  security-quality-gate:
-    name: Security Quality Gate
-    runs-on: ubuntu-latest
-    needs: [bandit-scan, semgrep-scan, codeql-scan, safety-scan, pip-audit-scan, gitleaks-scan, trivy-fs-scan, trivy-image-scan]
-    if: always()
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: ./security-reports
-        
-    - name: Prepare reports for analysis
-      run: |
-        # Mover todos los JSONs al directorio actual para análisis
-        find ./security-reports -name "*.json" -exec cp {} . \;
-        ls -la *.json || echo "No JSON files found"
-        
-    - name: Make script executable
-      run: chmod +x scripts/security-quality-gate.sh
-      
-    - name: Run Security Quality Gate
-      env:
-        MAX_CRITICAL: 0
-        MAX_HIGH: 5
-        MAX_MEDIUM: 15
-        BLOCK_ON_SECRETS: false  # VAmPI tiene secretos intencionalmente
-        BLOCK_ON_CRITICAL_DEPS: true
-      run: ./scripts/security-quality-gate.sh
-      
-    - name: Upload Quality Gate Report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: quality-gate-results
-        path: |
-          *.json
-          scripts/security-quality-gate.sh
-
-  security-summary:
-    name: Security Summary
-    runs-on: ubuntu-latest
-    needs: [security-quality-gate]
-    if: always()
-    
-    steps:
-    - name: Security Analysis Complete
-      run: |
-        echo "🔒 SAST Security Analysis Completed"
-        echo "🚦 Quality Gate evaluation finished"
-        echo "📋 All results available as JSON artifacts"
-        echo "📊 Download artifacts for detailed analysis"
