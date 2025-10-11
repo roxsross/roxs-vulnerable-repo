@@ -58,11 +58,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    - name: Run Safety
-      uses: pyupio/safety-action@v1
-      with:
-        scan: requirements.txt
-        
     - name: Run Safety CLI to check for vulnerabilities
       uses: pyupio/safety-action@v1
       with:

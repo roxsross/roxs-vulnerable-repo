@@ -106,13 +106,13 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     
-    - name: Run Safety CLI to check for vulnerabilities
-      uses: pyupio/safety-action@v1
+    steps:
+    - uses: actions/checkout@v4
       with:
-        api-key: ${{ secrets.SAFETY_API_KEY }}
-        output-format: json
-        args: --detailed-output --output-format json
-      continue-on-error: true
+        fetch-depth: 0
+    - uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   trivy-fs-scan:
     name: Trivy Filesystem Scan
