@@ -175,7 +175,7 @@ jobs:
   security-quality-gate:
     name: Security Quality Gate
     runs-on: ubuntu-latest
-    needs: [bandit-scan, semgrep-scan, codeql-scan, safety-scan, pip-audit-scan, gitleaks-scan, trivy-fs-scan, trivy-image-scan]
+    needs: [bandit-scan, semgrep-scan, safety-scan, pip-audit-scan, gitleaks-scan, trivy-fs-scan, trivy-image-scan]
     if: always()
     
     steps:
@@ -212,17 +212,3 @@ jobs:
         path: |
           *.json
           scripts/security-quality-gate.sh
-
-  security-summary:
-    name: Security Summary
-    runs-on: ubuntu-latest
-    needs: [security-quality-gate]
-    if: always()
-    
-    steps:
-    - name: Security Analysis Complete
-      run: |
-        echo "🔒 SAST Security Analysis Completed"
-        echo "🚦 Quality Gate evaluation finished"
-        echo "📋 All results available as JSON artifacts"
-        echo "📊 Download artifacts for detailed analysis"
