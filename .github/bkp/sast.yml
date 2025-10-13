@@ -5,8 +5,8 @@ on:
     branches: [ vampi, main, master ]
   pull_request:
     branches: [ vampi, main, master ]
-#  schedule:
-#    - cron: '0 2 * * 1'
+  schedule:
+    - cron: '0 2 * * 1'
 
 jobs:
   bandit-scan:
@@ -65,15 +65,37 @@ jobs:
         output-format: json
         args: --detailed-output --output-format json
       continue-on-error: true
-    - name: listar
-      run: ls -lrt         
+        
     - name: Upload JSON
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: safety-results-json
         path: safety-report.json
-      
+
+  pip-audit-scan:
+    name: Pip-Audit Vulnerability Scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Run pip-audit
+      run: |
+        pip install pip-audit
+        pip-audit -r requirements.txt --format=json --output=pip-audit-report.json || true
+        
+    - name: Upload JSON
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: pip-audit-results-json
+        path: pip-audit-report.json
+
   gitleaks-scan:
     name: GitLeaks Secrets Scan
     runs-on: ubuntu-latest
@@ -95,7 +117,7 @@ jobs:
       if: always()
       with:
         name: gitleaks-results-json
-        path: gitleaks-result.json
+        path: gitleaks-report.json
 
   trivy-fs-scan:
     name: Trivy Filesystem Scan
@@ -148,14 +170,12 @@ jobs:
   security-quality-gate:
     name: Security Quality Gate
     runs-on: ubuntu-latest
-    needs: [bandit-scan, semgrep-scan, safety-scan, gitleaks-scan, trivy-fs-scan, trivy-image-scan]
+    needs: [bandit-scan, semgrep-scan, safety-scan, pip-audit-scan, gitleaks-scan, trivy-fs-scan, trivy-image-scan]
     if: always()
     
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'    
+    
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
@@ -166,8 +186,24 @@ jobs:
         # Mover todos los JSONs al directorio actual para análisis
         find ./security-reports -name "*.json" -exec cp {} . \;
         ls -la *.json || echo "No JSON files found"
-        python .github/scripts/vulnerability-summary.py
         
     - name: Make script executable
       run: chmod +x scripts/security-quality-gate.sh
       
+    - name: Run Security Quality Gate
+      env:
+        MAX_CRITICAL: 0
+        MAX_HIGH: 5
+        MAX_MEDIUM: 15
+        BLOCK_ON_SECRETS: false  # VAmPI tiene secretos intencionalmente
+        BLOCK_ON_CRITICAL_DEPS: true
+      run: ./scripts/security-quality-gate.sh
+      
+    - name: Upload Quality Gate Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: quality-gate-results
+        path: |
+          *.json
+          scripts/security-quality-gate.sh
