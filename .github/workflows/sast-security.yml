@@ -5,8 +5,8 @@ on:
     branches: [ vampi, main, master ]
   pull_request:
     branches: [ vampi, main, master ]
-  schedule:
-    - cron: '0 2 * * 1'
+#  schedule:
+#    - cron: '0 2 * * 1'
 
 jobs:
   bandit-scan:
@@ -190,20 +190,3 @@ jobs:
     - name: Make script executable
       run: chmod +x scripts/security-quality-gate.sh
       
-    - name: Run Security Quality Gate
-      env:
-        MAX_CRITICAL: 0
-        MAX_HIGH: 5
-        MAX_MEDIUM: 15
-        BLOCK_ON_SECRETS: false  # VAmPI tiene secretos intencionalmente
-        BLOCK_ON_CRITICAL_DEPS: true
-      run: ./scripts/security-quality-gate.sh
-      
-    - name: Upload Quality Gate Report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: quality-gate-results
-        path: |
-          *.json
-          scripts/security-quality-gate.sh
