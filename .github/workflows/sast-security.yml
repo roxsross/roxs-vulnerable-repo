@@ -63,7 +63,7 @@ jobs:
       with:
         api-key: ${{ secrets.SAFETY_API_KEY }}
         output-format: json
-        args: "--full-report --output-format json" 
+        args: "--save-as json safety-report.json" 
       continue-on-error: true
     - name: listar
       run: ls -lrt         
