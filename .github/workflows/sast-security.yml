@@ -63,7 +63,7 @@ jobs:
       with:
         api-key: ${{ secrets.SAFETY_API_KEY }}
         output-format: json
-        args: "--save-as json safety-results.json" 
+        args: "--detailed-output --save-as json safety-results.json" 
       continue-on-error: true  
     - name: Upload JSON
       uses: actions/upload-artifact@v4
