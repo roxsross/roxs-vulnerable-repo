@@ -66,13 +66,15 @@ jobs:
         args: "--save-as json safety-report.json" 
       continue-on-error: true
     - name: listar
-      run: ls -lrt         
+      run: |
+        ls -lrt 
+        cat safety-results.json     
     - name: Upload JSON
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: safety-results-json
-        path: safety-report.json
+        path: safety-results.json
       
   gitleaks-scan:
     name: GitLeaks Secrets Scan
