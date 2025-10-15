@@ -1,6 +1,7 @@
 name: WIRU Base Pipeline POC
 
 on:
+  push:
   workflow_call:
     inputs:
       environments:
