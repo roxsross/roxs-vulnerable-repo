@@ -1,190 +1,36 @@
-name: WIRU Serverless POC (clean flow)
-
+###################################################################################################
+############################# ShamanOps pipeline | GitHub Actions #################################
+###################################################################################################
+name: ShamanOps
 on:
-  push:
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      app-name:
-        description: 'Application name'
-        required: false
-        type: string
-        default: 'my-app'
-      stage:
-        description: 'Stage: dev | stg'
-        required: true
-        type: string
-      version:
-        description: 'App version (semver, optional)'
-        required: false
-        type: string
-        default: ''
-      do-remove:
-        description: 'Execute serverless remove (manual only)'
-        required: false
-        type: boolean
-        default: false
-      do-rollback:
-        description: 'Execute serverless rollback (manual only)'
-        required: false
-        type: boolean
-        default: false
-      rollback-to:
-        description: 'Rollback timestamp/ID (optional)'
-        required: false
-        type: string
-        default: ''
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ inputs.app-name }}-${{ inputs.stage }}
-  cancel-in-progress: false
-
-defaults:
-  run:
-    shell: bash
-
-env:
-  APP_NAME: ${{ inputs.app-name }}
-  STAGE: ${{ inputs.stage }}
-  INPUT_VERSION: ${{ inputs.version }}
-
-# ──────────────── JOBS ────────────────
+  push:
+    branches: [ "main" ]
 jobs:
-  # INIT
-  wiru_init:
-    name: "🧰 init"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install deps & serverless
-        run: |
-          if [ -f package.json ]; then npm ci --silent || true; fi
-          npm i -g serverless >/dev/null 2>&1 || true
-      - name: Version check (optional)
-        run: |
-          if [ -n "${INPUT_VERSION}" ]; then
-            if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
-              echo "version ok: ${INPUT_VERSION}"
-            else
-              echo "invalid semver"; exit 1
-            fi
-          fi
-
-  # UNIT TESTS (depende de init)
-  wtest_unit:
-    name: "🧪 unit-test"
-    needs: wiru_init
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Run tests with coverage
-        run: |
-          if [ -f package.json ]; then
-            npm ci --silent || true
-            npm test --silent || echo "no tests configured"
-            # Si usás Jest, generá lcov para Sonar:
-            npx jest --coverage --coverageReporters=lcov || true
-          else
-            echo "no Node project; smoke ok"
-          fi
-      - name: Upload coverage (optional)
-        if: ${{ hashFiles('coverage/lcov.info') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-lcov
-          path: coverage/lcov.info
-
-  # SONAR (depende de unit-test)
-  wtest_sonar:
-    name: "📊 sonar"
-    needs: wtest_unit
-    runs-on: ubuntu-latest
-    env:
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Download coverage (optional)
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-lcov
-          path: coverage
-        continue-on-error: true
-      - name: Sonar Scanner (placeholder)
-        run: |
-          if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
-            echo "Missing SONAR secrets"; exit 1
-          fi
-          SCANNER_DIR="${RUNNER_TEMP}/sonar-scanner"
-          mkdir -p "${SCANNER_DIR}"
-          curl -sLo "${SCANNER_DIR}/scanner.zip" https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
-          unzip -qq "${SCANNER_DIR}/scanner.zip" -d "${SCANNER_DIR}" || true
-          export PATH="${SCANNER_DIR}/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
-
-          sonar-scanner \
-            -Dsonar.host.url="${SONAR_HOST_URL}" \
-            -Dsonar.login="${SONAR_TOKEN}" \
-            -Dsonar.projectKey="${SONAR_PROJECT_KEY:-${APP_NAME}}" \
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info || true
-
-  # DEPLOY (depende de sonar)
-  wdeploy_deploy:
-    name: "🚀 deploy"
-    needs: wtest_sonar
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy Serverless
-        run: |
-          echo "deploy ${STAGE} - ${APP_NAME}"
-          # serverless deploy --stage "${STAGE}"
-          echo "url: https://${STAGE}.example.com/${APP_NAME}"
-
-  # REMOVE (manual + flag) – depende de sonar
-  wdeploy_remove:
-    name: "🧹 remove (manual)"
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
-    needs: wtest_sonar
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Remove Serverless
-        run: |
-          echo "remove ${STAGE}"
-          # serverless remove --stage "${STAGE}"
-
-  # ROLLBACK (manual + flag) – depende de sonar
-  wdeploy_rollback:
-    name: "⏪ rollback (manual)"
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
-    needs: wtest_sonar
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Rollback Serverless
-        run: |
-          echo "rollback ${STAGE}"
-          RB_TO="${{ inputs.rollback-to }}"
-          if [ -n "${RB_TO}" ]; then
-            echo "rollback to: ${RB_TO}"
-            # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}"
-          else
-            echo "rollback to last deployment"
-            # serverless rollback --stage "${STAGE}"
-          fi
+  shamanops:
+    uses: shamanops/resources/.github/workflows/base-stable.yaml@main
+    with:
+    # Environments:
+    # full-with-drp (dev/stg/prod/drp) | full (dev/stg/prod) | mid (stg/prod) | minimal (prod)
+      environments: 'full'
+    # Project
+      projectName: 'examples'
+#-------------------------------------------------------------------------------------------------#
+## Features  -------------------------------------------------------------------------------------#
+    # Approvals
+      shamanopsBusinessApprovers: 'business-user@customer.com'
+      shamanopsTechnicalApprovers: 'technical-user@customer.com'
+#-------------------------------------------------------------------------------------------------#
+    secrets:
+      shamanops_customer_token: ${{ secrets.shamanops_customer_token }}
+      shamanops_argocd_dev_token: ${{ secrets.shamanops_argocd_dev_token }}
+      shamanops_argocd_stg_token: ${{ secrets.shamanops_argocd_stg_token }}
+      shamanops_argocd_prod_token: ${{ secrets.shamanops_argocd_prod_token }}
+      shamanops_argocd_drp_token: ${{ secrets.shamanops_argocd_drp_token }}
+      shamanops_manifest_repository_token: ${{ secrets.shamanops_manifest_repository_token }}
+      shamanops_chat_webhook: ${{ secrets.shamanops_chat_webhook }}
+      shamanops_registry_password: ${{ secrets.shamanops_registry_password }}
+      shamanops_secondary_registry_password: ${{ secrets.shamanops_secondary_registry_password }}
+      shamanops_dockerfile_token: ${{ secrets.shamanops_dockerfile_token }}
+##################################################################################################
+##################################################################################################
