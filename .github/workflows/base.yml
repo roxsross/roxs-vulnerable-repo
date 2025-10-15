@@ -51,6 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: install dependencies
+        shell: bash
         run: |
           echo "🚀 INIT – install dependencies"
           if [ -f "package.json" ]; then
@@ -64,6 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Version Checks (semver)
+        shell: bash
         run: |
           echo "🔍 CHECK – Version Checks"
           echo "Stage: ${STAGE}"
@@ -71,10 +73,10 @@ jobs:
             echo "❌ Deploy a PROD no permitido en esta POC"
             exit 1
           fi
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-            if echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([\-+][A-Za-z0-9\.-]+)?$'; then
-              echo "✅ Versión válida: $VERSION"
+          VERSION="${{ inputs.version }}"
+          if [ -n "${VERSION}" ]; then
+            if echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([\-+][A-Za-z0-9\.-]+)?$'; then
+              echo "✅ Versión válida: ${VERSION}"
             else
               echo "❌ Versión inválida (use semver, ej: 1.2.3)"
               exit 1
@@ -88,6 +90,7 @@ jobs:
     needs: check-version
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         target: [unit, sonar]
     env:
@@ -105,6 +108,7 @@ jobs:
 
       - name: Unit Tests (matrix: unit)
         if: ${{ matrix.target == 'unit' }}
+        shell: bash
         run: |
           echo "🧪 TEST – Unit (matrix)"
           if [ -f "package.json" ]; then
@@ -118,23 +122,27 @@ jobs:
 
       - name: Sonar Analysis (matrix: sonar)
         if: ${{ matrix.target == 'sonar' }}
+        shell: bash
         run: |
           echo "📊 SONAR – Static Analysis (matrix)"
           if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
             echo "❌ Faltan secrets SONAR_HOST_URL / SONAR_TOKEN"
             exit 1
           fi
-          SCANNER_DIR="$RUNNER_TEMP/sonar-scanner"
-          mkdir -p "$SCANNER_DIR"
-          curl -sLo "$SCANNER_DIR/sonar-scanner.zip" https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
-          unzip -qq "$SCANNER_DIR/sonar-scanner.zip" -d "$SCANNER_DIR" || true
-          export PATH="$SCANNER_DIR/sonar-scanner-5.0.1.3006-linux/bin:$PATH"
+
+          SCANNER_DIR="${RUNNER_TEMP}/sonar-scanner"
+          mkdir -p "${SCANNER_DIR}"
+          curl -sLo "${SCANNER_DIR}/sonar-scanner.zip" \
+            https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
+          unzip -qq "${SCANNER_DIR}/sonar-scanner.zip" -d "${SCANNER_DIR}" || true
+          export PATH="${SCANNER_DIR}/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
 
           if [ -f "package.json" ]; then
             npm ci --silent || true
             npm run test:coverage --silent || echo "ℹ️ Sin script coverage, continuo…"
           fi
 
+          # Usa sonar-project.properties si existe; si no, toma APP_NAME
           sonar-scanner \
             -Dsonar.host.url="${SONAR_HOST_URL}" \
             -Dsonar.login="${SONAR_TOKEN}" \
@@ -150,10 +158,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy Serverless
+        shell: bash
         run: |
           echo "🚀 DEPLOY – Serverless (${STAGE})"
           echo "App: ${APP_NAME}"
-          # serverless deploy --stage ${STAGE}
+          # serverless deploy --stage "${STAGE}"
           echo "🌐 URL (ejemplo): https://${STAGE}.example.com/${APP_NAME}"
           echo "✅ Deploy ${STAGE} OK"
 
@@ -165,9 +174,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Remove Serverless
+        shell: bash
         run: |
           echo "🧹 REMOVE – Serverless (${STAGE})"
-          # serverless remove --stage ${STAGE}
+          # serverless remove --stage "${STAGE}"
           echo "✅ Remove ${STAGE} OK"
 
   rollback:
@@ -178,14 +188,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Rollback Serverless
+        shell: bash
         run: |
           echo "🛡️  ROLLBACK – Serverless (${STAGE})"
           RB_TO="${{ inputs.rollback-to }}"
           if [ -n "${RB_TO}" ]; then
             echo "⏪ Rollback a: ${RB_TO}"
-            # serverless rollback --stage ${STAGE} --timestamp ${RB_TO}
+            # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}"
           else
             echo "⏪ Rollback al último deployment"
-            # serverless rollback --stage ${STAGE}
+            # serverless rollback --stage "${STAGE}"
           fi
           echo "✅ Rollback ${STAGE} OK"
