@@ -47,27 +47,29 @@ env:
   STAGE: ${{ inputs.stage }}
   INPUT_VERSION: ${{ inputs.version }}
 
+# --- INIT: único y estable ---
 jobs:
-  wiru:
+  wiru_init:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: { target: [init, wversion] }
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Node
-        if: ${{ matrix.target == 'init' || matrix.target == 'wversion' }}
-        uses: actions/setup-node@v4
-        with: { node-version: '20' }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: INIT
-        if: ${{ matrix.target == 'init' }}
         shell: bash
         run: |
           echo "INIT"
           if [ -f package.json ]; then npm ci --silent || true; fi
           npm i -g serverless >/dev/null 2>&1 || true
+          echo "INIT ok"
+
+  # --- VERSION CHECK: opcional, depende de INIT (no bloquea tests) ---
+  wiru_versioncheck:
+    needs: wiru_init
+    runs-on: ubuntu-latest
+    steps:
       - name: VERSION CHECK
-        if: ${{ matrix.target == 'wversion' }}
         shell: bash
         run: |
           echo "VERSION CHECK"
@@ -77,33 +79,40 @@ jobs:
             else
               echo "invalid semver"; exit 1
             fi
+          else
+            echo "no version; continue"
           fi
 
+  # --- TESTS: dependen SOLO de INIT (como pediste) ---
   wtest:
-    needs: wiru
+    needs: wiru_init
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: { target: [unit-test, sonarqube] }
+      matrix:
+        target: [unit-test, sonarqube]
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Node
+      - uses: actions/setup-node@v4
         if: ${{ matrix.target == 'unit-test' || matrix.target == 'sonarqube' }}
-        uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with:
+          node-version: '20'
+
       - name: Unit Tests
         if: ${{ matrix.target == 'unit-test' }}
         shell: bash
         run: |
           echo "UNIT TESTS"
           if [ -f package.json ]; then npm test --silent || echo "no tests"; else echo "smoke ok"; fi
+
       - name: SonarQube Analysis
         if: ${{ matrix.target == 'sonarqube' }}
         shell: bash
         run: |
           echo "SONAR (placeholder)"
+          # acá va tu análisis real (scanner o action)
 
-  # --- DEPLOY: siempre habilitado tras tests ---
+  # --- DEPLOY: siempre tras tests ---
   wdeploy_deploy:
     needs: wtest
     runs-on: ubuntu-latest
@@ -117,7 +126,7 @@ jobs:
           # serverless deploy --stage "${STAGE}"
           echo "URL: https://${STAGE}.example.com/${APP_NAME}"
 
-  # --- REMOVE: solo manual y con flag do-remove=true ---
+  # --- REMOVE: manual + flag ---
   wdeploy_remove:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
     needs: wtest
@@ -131,7 +140,7 @@ jobs:
           echo "REMOVE ${STAGE}"
           # serverless remove --stage "${STAGE}"
 
-  # --- ROLLBACK: solo manual y con flag do-rollback=true ---
+  # --- ROLLBACK: manual + flag ---
   wdeploy_rollback:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
     needs: wtest
