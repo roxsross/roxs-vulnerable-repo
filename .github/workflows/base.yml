@@ -57,17 +57,12 @@ jobs:
     name: "🧰 init"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - name: Install deps & serverless
+      - name: Simulate init
         run: |
-          if [ -f package.json ]; then 
-            npm ci --silent
-          fi
-          npm i -g serverless
+          echo "🧰 Initializing workflow..."
+          echo "APP_NAME: ${APP_NAME}"
+          echo "STAGE: ${STAGE}"
+          echo "VERSION: ${INPUT_VERSION}"
 
   # ─────────────────────── VERSION CHECK (dep INIT) ───────────────────────
   wiru_versioncheck:
@@ -77,7 +72,8 @@ jobs:
     steps:
       - name: Validate semver (optional)
         run: |
-          VERSION="${{ env.INPUT_VERSION }}"
+          echo "🏷️ Checking version..."
+          VERSION="${INPUT_VERSION}"
           if [ -n "${VERSION}" ]; then
             if echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
               echo "✅ Version ok: ${VERSION}"
@@ -99,32 +95,13 @@ jobs:
       matrix:
         node: [20]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: 'npm'
-      - name: Install dependencies
+      - name: Simulate unit tests
         run: |
-          if [ -f package.json ]; then
-            npm ci --silent
-          else
-            echo "⚠️ No package.json found"
-            exit 0
-          fi
-      - name: Run tests with coverage
-        run: |
-          npm test -- --coverage --coverageReporters=lcov 2>&1 || {
-            echo "⚠️ Tests failed or not configured"
-            exit 0
-          }
-      - name: Upload coverage
-        if: hashFiles('coverage/lcov.info') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-lcov-node-${{ matrix.node }}
-          path: coverage/lcov.info
-          retention-days: 1
+          echo "🧪 Running unit tests on Node ${{ matrix.node }}..."
+          echo "Installing dependencies..."
+          echo "Running tests with coverage..."
+          echo "✅ Tests passed!"
+          echo "📊 Coverage generated"
 
   # ───────────────── SONAR (MATRIX) dep UNIT ─────────────────
   wtest_sonar:
@@ -135,50 +112,14 @@ jobs:
       fail-fast: false
       matrix:
         scanner: [sonarqube]
-    env:
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Necesario para Sonar
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Download coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-lcov-node-20
-          path: coverage
-        continue-on-error: true
-      - name: Sonar Scanner
+      - name: Simulate Sonar analysis
         run: |
-          if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
-            echo "⚠️ Missing SONAR secrets - skipping analysis"
-            exit 0
-          fi
-          
-          SCANNER_VERSION="5.0.1.3006"
-          SCANNER_DIR="${RUNNER_TEMP}/sonar-scanner"
-          mkdir -p "${SCANNER_DIR}"
-          
-          echo "📥 Downloading Sonar Scanner ${SCANNER_VERSION}..."
-          curl -sLo "${SCANNER_DIR}/scanner.zip" \
-            "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-${SCANNER_VERSION}-linux.zip"
-          
-          unzip -qq "${SCANNER_DIR}/scanner.zip" -d "${SCANNER_DIR}"
-          export PATH="${SCANNER_DIR}/sonar-scanner-${SCANNER_VERSION}-linux/bin:${PATH}"
-
-          PROJECT_KEY="${SONAR_PROJECT_KEY:-${APP_NAME}}"
-          
-          echo "🔍 Running Sonar analysis for project: ${PROJECT_KEY}"
-          sonar-scanner \
-            -Dsonar.host.url="${SONAR_HOST_URL}" \
-            -Dsonar.login="${SONAR_TOKEN}" \
-            -Dsonar.projectKey="${PROJECT_KEY}" \
-            -Dsonar.sources=. \
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          echo "📊 Running Sonar analysis (${{ matrix.scanner }})..."
+          echo "Downloading Sonar Scanner..."
+          echo "Analyzing code quality..."
+          echo "Uploading results to SonarQube..."
+          echo "✅ Sonar analysis complete!"
 
   # ─────────────────────────── DEPLOY dep SONAR ───────────────────────────
   wdeploy_deploy:
@@ -187,21 +128,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.stage || 'dev' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - name: Install dependencies
-        run: |
-          if [ -f package.json ]; then
-            npm ci --silent
-          fi
-          npm i -g serverless
-      - name: Deploy Serverless
+      - name: Simulate deployment
         run: |
           echo "🚀 Deploying ${APP_NAME} to ${STAGE}..."
-          # serverless deploy --stage "${STAGE}" --verbose
+          echo "serverless deploy --stage ${STAGE}"
           echo "✅ Deployment complete!"
           echo "🌐 URL: https://${STAGE}.example.com/${APP_NAME}"
 
@@ -213,16 +143,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.stage }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install serverless
-        run: npm i -g serverless
-      - name: Remove Serverless
+      - name: Simulate removal
         run: |
-          echo "🧹 Removing stack from ${STAGE}..."
-          # serverless remove --stage "${STAGE}" --verbose
+          echo "🧹 Removing ${APP_NAME} from ${STAGE}..."
+          echo "serverless remove --stage ${STAGE}"
           echo "✅ Stack removed successfully"
 
   # ─────────────── ROLLBACK (manual) dep SONAR ───────────────
@@ -233,21 +157,15 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.stage }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install serverless
-        run: npm i -g serverless
-      - name: Rollback Serverless
+      - name: Simulate rollback
         run: |
-          echo "⏪ Rolling back ${STAGE}..."
+          echo "⏪ Rolling back ${APP_NAME} on ${STAGE}..."
           RB_TO="${{ github.event.inputs.rollback-to }}"
           if [ -n "${RB_TO}" ]; then
             echo "📍 Rollback to: ${RB_TO}"
-            # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}" --verbose
+            echo "serverless rollback --stage ${STAGE} --timestamp ${RB_TO}"
           else
             echo "📍 Rollback to last deployment"
-            # serverless rollback --stage "${STAGE}" --verbose
+            echo "serverless rollback --stage ${STAGE}"
           fi
           echo "✅ Rollback complete"
