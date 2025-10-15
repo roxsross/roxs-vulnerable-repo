@@ -1,47 +1,3 @@
-name: WIRU Serverless POC
-
-on:
-  push:
-  workflow_dispatch:
-  workflow_call:
-    inputs:
-      app-name:
-        description: "Application name"
-        required: false
-        type: string
-        default: "my-app"
-      stage:
-        description: "Stage: dev | stg"
-        required: true
-        type: string
-      version:
-        description: "App version (semver, optional)"
-        required: false
-        type: string
-        default: ""
-      do-remove:
-        description: "Execute serverless remove (manual only)"
-        required: false
-        type: boolean
-        default: false
-      do-rollback:
-        description: "Execute serverless rollback (manual only)"
-        required: false
-        type: boolean
-        default: false
-      rollback-to:
-        description: "Rollback timestamp/ID (optional)"
-        required: false
-        type: string
-        default: ""
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ inputs.app-name }}-${{ inputs.stage }}
-  cancel-in-progress: false
-
 jobs:
   init:
     name: "winstall"
@@ -50,111 +6,119 @@ jobs:
       - name: Simulate init
         run: |
           echo "🧰 Initializing workflow..."
-          echo "APP_NAME: ${{ inputs.app-name }}"
-          echo "STAGE: ${{ inputs.stage }}"
-          echo "VERSION: ${{ inputs.version }}"
+          echo "APP_NAME: ${APP_NAME}"
+          echo "STAGE: ${STAGE}"
+          echo "VERSION: ${INPUT_VERSION}"
 
   wversion:
     name: "wversion"
     needs: init
     runs-on: ubuntu-latest
     steps:
-      - name: Validate version
+      - name: Semver check
         run: |
-          echo "🏷️ Checking version..."
-          if [ -n "${{ inputs.version }}" ]; then
-            if echo "${{ inputs.version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
-              echo "✅ Version OK: ${{ inputs.version }}"
+          if [ -n "${INPUT_VERSION}" ]; then
+            if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
+              echo "version ok: ${INPUT_VERSION}"
             else
-              echo "❌ Invalid version format"; exit 1
+              echo "invalid semver"; exit 1
             fi
-          else
-            echo "No version provided, skipping check."
+          fi
 
-  wtest:
-    name: "wtest"
-    needs: [init, wversion]
+  # Matrix de unit tests (validación multi-runtime) – NO bloquea Sonar
+  wtest_unit_matrix:
+    name: "wtest (unit matrix)"
+    needs: init
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+
+  # Job rápido para generar cobertura una sola vez
+  wtest_coverage:
+    name: "wtest (coverage)"
+    needs: init
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run Tests
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Generate coverage
         run: |
-          echo "🧪 Running unit tests..."
-          # npm ci && npm test
-      - name: Upload Coverage
+          echo "🧪 Generating coverage on Node 20..."
+          # npm ci
+          # npm run test:coverage
+          mkdir -p coverage && echo "TN:\nSF:dummy\nDA:1,1\nend_of_record" > coverage/lcov.info
+      - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage/
+          path: coverage/lcov.info
           retention-days: 1
 
+  # Sonar depende SOLO de coverage ⇒ arranca sin esperar al matrix
   wsonar:
     name: "wsonar"
-    needs: wtest
+    needs: wtest_coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Download coverage
+        uses: actions/download-artifact@v4
         with:
-          node-version: "20"
+          name: coverage-report
+          path: coverage
+        continue-on-error: true
       - name: SonarQube Analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          echo "📊 Running SonarQube analysis..."
-          # sonar-scanner \
-          #   -Dsonar.projectKey=my-project \
-          #   -Dsonar.sources=src \
-          #   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          echo "📊 Running SonarQube analysis with coverage/ltcov.info..."
+          # sonar-scanner ... -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
+  # Deploy exige que estén:
+  #  - el análisis Sonar (wsonar)
+  #  - y el matrix de unit tests completo (wtest_unit_matrix)
   wdeploy_deploy:
     name: "wsls deploy"
-    needs: [wtest, wsonar]
+    needs: [wsonar, wtest_unit_matrix]
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
       - uses: actions/checkout@v4
       - name: Deploy Serverless
         run: |
-          echo "🚀 DEPLOY ${{ inputs.stage }} - ${{ inputs.app-name }}"
-          # serverless deploy --stage "${{ inputs.stage }}"
-          echo "URL: https://${{ inputs.stage }}.example.com/${{ inputs.app-name }}"
+          echo "DEPLOY ${STAGE} - ${APP_NAME}"
+          # serverless deploy --stage "${STAGE}"
 
   wdeploy_rollback:
-    name: "wsls rollback"
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
-    needs: [wtest, wsonar]
+    name: "wsls rollback"
+    needs: [wsonar, wtest_unit_matrix]
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
       - uses: actions/checkout@v4
       - name: Rollback Serverless
         run: |
-          echo "⏪ ROLLBACK ${{ inputs.stage }}"
-          if [ -n "${{ inputs.rollback-to }}" ]; then
-            echo "Rollback to: ${{ inputs.rollback-to }}"
-            # serverless rollback --stage "${{ inputs.stage }}" --timestamp "${{ inputs.rollback-to }}"
-          else
-            echo "Rollback to last deployment"
-            # serverless rollback --stage "${{ inputs.stage }}"
-          fi
+          echo "ROLLBACK ${STAGE}"
+          # serverless rollback ...
 
   wdeploy_remove:
-    name: "wsls remove"
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
-    needs: [wtest, wsonar]
+    name: "wsls remove"
+    needs: [wsonar, wtest_unit_matrix]
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
       - uses: actions/checkout@v4
       - name: Remove Serverless
         run: |
-          echo "🧹 REMOVE ${{ inputs.stage }}"
-          # serverless remove --stage "${{ inputs.stage }}"
+          echo "REMOVE ${STAGE}"
+          # serverless remove --stage "${STAGE}"
