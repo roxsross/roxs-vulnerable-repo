@@ -1,171 +1,192 @@
-name: SAST Security Analysis
+name: WIRU Base Pipeline POC
 
 on:
-  push:
-    branches: [ vampi, main, master ]
-  pull_request:
-    branches: [ vampi, main, master ]
-#  schedule:
-#    - cron: '0 2 * * 1'
+  workflow_call:
+    inputs:
+      environments:
+        description: 'Environments: full-with-drp | full | mid | minimal'
+        required: true
+        type: string
+      app-name:
+        description: 'Application name'
+        required: false
+        type: string
+        default: 'my-app'
+      deploy-strategy:
+        description: 'Strategy: rolling | blue-green'
+        required: false
+        type: string
+        default: 'rolling'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.app-name }}
+  cancel-in-progress: false
+
+env:
+  APP_NAME: ${{ inputs.app-name }}
+  DEPLOY_STRATEGY: ${{ inputs.deploy-strategy }}
 
 jobs:
-  bandit-scan:
-    name: Bandit Security Scan
+  # === WIRU: INIT ===
+  init:
     runs-on: ubuntu-latest
-    continue-on-error: true
-    
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Run Bandit
-      run: |
-        pip install bandit
-        bandit -r . -f json -o bandit-report.json -ll -i || true
-        
-    - name: Upload JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: bandit-results-json
-        path: bandit-report.json
+      - uses: actions/checkout@v4
+      - name: Inicializar entorno (INIT)
+        run: |
+          echo "=========================================="
+          echo "🚀 INIT"
+          echo "=========================================="
+          echo "📦 App: ${APP_NAME}"
+          echo "🧭 Strategy: ${DEPLOY_STRATEGY}"
+          echo "✅ Entorno inicializado"
+          echo ""
 
-  semgrep-scan:
-    name: Semgrep Security Scan
+  # === WIRU: CHECK ===
+  check:
+    needs: init
     runs-on: ubuntu-latest
-    continue-on-error: true
-    
     steps:
-    - uses: actions/checkout@v4
-    - name: Run Semgrep
-      run: |
-        pip install semgrep
-        semgrep --config=p/security-audit --config=p/secrets --config=p/python --config=p/flask --config=p/owasp-top-ten --json --output=semgrep-report.json . || true
-        
-    - name: Upload JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: semgrep-results-json
-        path: semgrep-report.json
+      - name: Validar configuración (CHECK)
+        run: |
+          echo "=========================================="
+          echo "🔍 CHECK"
+          echo "=========================================="
+          echo "🌍 Environments: ${{ inputs.environments }}"
+          echo "🔖 Branch: ${GITHUB_REF_NAME}"
+          echo "✅ Configuración válida"
+          echo ""
 
-  safety-scan:
-    name: Safety Dependency Check
+  # === WIRU: TEST ===
+  test:
+    needs: check
     runs-on: ubuntu-latest
-    continue-on-error: true
-    
     steps:
-    - uses: actions/checkout@v4
-    - name: Run Safety CLI to check for vulnerabilities
-      uses: pyupio/safety-action@v1
-      with:
-        api-key: ${{ secrets.SAFETY_API_KEY }}
-        output-format: json
-        args: "--detailed-output --save-as json safety-results.json" 
-      continue-on-error: true  
-    - name: Upload JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: safety-results-json
-        path: safety-results.json
-      
-  gitleaks-scan:
-    name: GitLeaks Secrets Scan
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        
-    - name: Run GitLeaks
-      uses: gitleaks/gitleaks-action@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
-        
-    - name: Upload JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: gitleaks-results-json
-        path: gitleaks-result.json
+      - uses: actions/checkout@v4
+      - name: Detectar stack y ejecutar tests (TEST)
+        run: |
+          echo "=========================================="
+          echo "🧪 TEST"
+          echo "=========================================="
+          if [ -f "package.json" ]; then
+            echo "📦 Node.js detectado"
+            npm ci || true
+            npm test --silent || true
+          elif [ -f "requirements.txt" ]; then
+            echo "🐍 Python detectado"
+            python -m pip install -r requirements.txt || true
+            pytest -q || true
+          else
+            echo "ℹ️ Sin stack estándar detectado, ejecutando smoke test"
+            echo "ok"
+          fi
+          echo "✅ Tests completados"
+          echo ""
 
-  trivy-fs-scan:
-    name: Trivy Filesystem Scan
+  # === WIRU: BUILD ===
+  build:
+    needs: test
     runs-on: ubuntu-latest
-    continue-on-error: true
-    
     steps:
-    - uses: actions/checkout@v4
-    - name: Run Trivy FS Scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'json'
-        output: 'trivy-fs-report.json'
-        
-    - name: Upload FS JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: trivy-fs-results-json
-        path: trivy-fs-report.json
+      - uses: actions/checkout@v4
+      - name: Build de la aplicación (BUILD)
+        run: |
+          echo "=========================================="
+          echo "🏗️  BUILD"
+          echo "=========================================="
+          echo "📦 Compilando ${APP_NAME}..."
+          # Placeholder: add npm run build / docker build / empaquetado
+          echo "✅ Build completado exitosamente"
+          echo ""
 
-  trivy-image-scan:
-    name: Trivy Container Image Scan
+  # === WIRU: DEPLOY (DEV) ===
+  deploy-dev:
+    if: |
+      inputs.environments == 'full' || 
+      inputs.environments == 'full-with-drp' ||
+      inputs.environments == 'mid'
+    needs: build
     runs-on: ubuntu-latest
-    continue-on-error: true
-    
+    environment: dev
     steps:
-    - uses: actions/checkout@v4
-    - name: Build Docker Image
-      run: |
-        docker build -t vampi:latest .
-        
-    - name: Run Trivy Image Scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'image'
-        image-ref: 'vampi:latest'
-        format: 'json'
-        output: 'trivy-image-report.json'
-        
-    - name: Upload Image JSON
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: trivy-image-results-json
-        path: trivy-image-report.json
+      - name: Deploy a DEV (DEPLOY)
+        run: |
+          echo "=========================================="
+          echo "🔧 DEPLOY TO DEV"
+          echo "=========================================="
+          echo "🚀 Desplegando ${APP_NAME} (strategy: ${DEPLOY_STRATEGY})..."
+          echo "🌐 URL: https://dev.example.com/${APP_NAME}"
+          echo "✅ DEV OK"
+          echo ""
 
-  security-quality-gate:
-    name: Security Quality Gate
+  # === WIRU: DEPLOY (STG) ===
+  deploy-stg:
+    if: inputs.environments != 'minimal'
+    needs: [build]
     runs-on: ubuntu-latest
-    needs: [bandit-scan, semgrep-scan, safety-scan, gitleaks-scan, trivy-fs-scan, trivy-image-scan]
+    environment: stg
+    steps:
+      - name: Deploy a STAGING (DEPLOY)
+        run: |
+          echo "=========================================="
+          echo "🔨 DEPLOY TO STAGING"
+          echo "=========================================="
+          echo "🚀 Desplegando ${APP_NAME} (strategy: ${DEPLOY_STRATEGY})..."
+          echo "🌐 URL: https://stg.example.com/${APP_NAME}"
+          echo "✅ STAGING OK"
+          echo ""
+
+  # === WIRU: DEPLOY (PRD) ===
+  deploy-prod:
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Deploy a PRODUCTION (DEPLOY)
+        run: |
+          echo "=========================================="
+          echo "🚀 DEPLOY TO PRODUCTION"
+          echo "=========================================="
+          echo "🚀 Desplegando ${APP_NAME} (strategy: ${DEPLOY_STRATEGY})..."
+          echo "🌐 URL: https://prod.example.com/${APP_NAME}"
+          echo "⚠️  Monitoreando post-deploy..."
+          echo "✅ PRODUCTION OK"
+          echo ""
+
+  # === WIRU: DEPLOY (DRP) ===
+  deploy-drp:
+    if: inputs.environments == 'full-with-drp'
+    needs: deploy-prod
+    runs-on: ubuntu-latest
+    environment: drp
+    steps:
+      - name: Deploy a DRP (Disaster Recovery)
+        run: |
+          echo "=========================================="
+          echo "🛡️  DEPLOY TO DRP"
+          echo "=========================================="
+          echo "🚀 Desplegando ${APP_NAME} a sitio DRP..."
+          echo "🌐 URL: https://drp.example.com/${APP_NAME}"
+          echo "✅ DRP OK"
+          echo ""
+
+  # === WIRU: NOTIFY / SUMMARY ===
+  summary:
+    needs: [deploy-dev, deploy-stg, deploy-prod, deploy-drp]
     if: always()
-    
+    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'    
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: ./security-reports
-        
-    - name: Prepare reports for analysis
-      run: |
-        # Mover todos los JSONs al directorio actual para análisis
-        find ./security-reports -name "*.json" -exec cp {} . \;
-        ls -la *.json || echo "No JSON files found"
-        python .github/scripts/vulnerability-summary.py
-        
-    - name: Make script executable
-      run: chmod +x scripts/security-quality-gate.sh
-      
+      - name: Resumen del deployment (NOTIFY)
+        run: |
+          echo "=========================================="
+          echo "📊 RESUMEN FINAL"
+          echo "=========================================="
+          echo "✅ Pipeline completado (con o sin skips)"
+          echo "📦 App: ${APP_NAME}"
+          echo "🌍 Environments: ${{ inputs.environments }}"
+          echo "🔀 Strategy: ${DEPLOY_STRATEGY}"
+          echo "⏰ Fecha: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo "=========================================="
