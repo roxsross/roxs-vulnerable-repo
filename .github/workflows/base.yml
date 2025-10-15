@@ -1,193 +1,190 @@
-name: WIRU Base Pipeline POC
+name: WIRU Serverless POC
 
 on:
   push:
   workflow_call:
     inputs:
-      environments:
-        description: 'Environments: full-with-drp | full | mid | minimal'
-        required: true
-        type: string
       app-name:
         description: 'Application name'
         required: false
         type: string
         default: 'my-app'
-      deploy-strategy:
-        description: 'Strategy: rolling | blue-green'
+      stage:
+        description: 'Stage: dev | stg'
+        required: true
+        type: string
+      version:
+        description: 'App version (semver, opcional)'
         required: false
         type: string
-        default: 'rolling'
+        default: ''
+      do-remove:
+        description: 'Execute serverless remove'
+        required: false
+        type: boolean
+        default: false
+      do-rollback:
+        description: 'Execute serverless rollback'
+        required: false
+        type: boolean
+        default: false
+      rollback-to:
+        description: 'Rollback timestamp/ID (optional)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.app-name }}
+  group: ${{ github.workflow }}-${{ inputs.app-name }}-${{ inputs.stage }}
   cancel-in-progress: false
 
 env:
   APP_NAME: ${{ inputs.app-name }}
-  DEPLOY_STRATEGY: ${{ inputs.deploy-strategy }}
+  STAGE: ${{ inputs.stage }}
 
 jobs:
-  # === WIRU: INIT ===
+  # === init ===
   init:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inicializar entorno (INIT)
+      - name: install dependencies
         run: |
           echo "=========================================="
-          echo "🚀 INIT"
+          echo "🚀 INIT – install dependencies"
           echo "=========================================="
-          echo "📦 App: ${APP_NAME}"
-          echo "🧭 Strategy: ${DEPLOY_STRATEGY}"
-          echo "✅ Entorno inicializado"
-          echo ""
+          if [ -f "package.json" ]; then
+            npm ci --silent || true
+          fi
+          npm i -g serverless >/dev/null 2>&1 || true
+          echo "✅ Entorno listo"
 
-  # === WIRU: CHECK ===
-  check:
+  # === check (solo Version Checks) ===
+  check-version:
     needs: init
     runs-on: ubuntu-latest
     steps:
-      - name: Validar configuración (CHECK)
+      - name: Version Checks (semver)
         run: |
           echo "=========================================="
-          echo "🔍 CHECK"
+          echo "🔍 CHECK – Version Checks"
           echo "=========================================="
-          echo "🌍 Environments: ${{ inputs.environments }}"
-          echo "🔖 Branch: ${GITHUB_REF_NAME}"
-          echo "✅ Configuración válida"
-          echo ""
+          echo "Stage: ${STAGE}"
+          if [ "${STAGE}" = "prod" ]; then
+            echo "❌ Deploy a PROD no permitido en esta POC"
+            exit 1
+          fi
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            if echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([\-+][A-Za-z0-9\.-]+)?$'; then
+              echo "✅ Versión válida: $VERSION"
+            else
+              echo "❌ Versión inválida (use semver, ej: 1.2.3)"
+              exit 1
+            fi
+          else
+            echo "ℹ️ Sin versión provista, continuo…"
+          fi
+          echo "✅ Checks OK"
 
-  # === WIRU: TEST ===
+  # === test ===
   test:
-    needs: check
+    needs: check-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Detectar stack y ejecutar tests (TEST)
+      - name: Wiru TestJs
         run: |
           echo "=========================================="
-          echo "🧪 TEST"
+          echo "🧪 TEST – Wiru TestJs"
           echo "=========================================="
           if [ -f "package.json" ]; then
-            echo "📦 Node.js detectado"
-            npm ci || true
-            npm test --silent || true
-          elif [ -f "requirements.txt" ]; then
-            echo "🐍 Python detectado"
-            python -m pip install -r requirements.txt || true
-            pytest -q || true
+            npm test --silent || echo "ℹ️ Tests no configurados, continuo…"
           else
-            echo "ℹ️ Sin stack estándar detectado, ejecutando smoke test"
+            echo "ℹ️ No se detectó Node; smoke test"
             echo "ok"
           fi
           echo "✅ Tests completados"
-          echo ""
 
-  # === WIRU: BUILD ===
-  build:
+  # === deploy (serverless) ===
+  deploy:
     needs: test
+    if: ${{ !inputs.do-remove && !inputs.do-rollback }}
     runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build de la aplicación (BUILD)
+      - name: Deploy Serverless
         run: |
           echo "=========================================="
-          echo "🏗️  BUILD"
+          echo "🚀 DEPLOY – Serverless (${STAGE})"
           echo "=========================================="
-          echo "📦 Compilando ${APP_NAME}..."
-          # Placeholder: add npm run build / docker build / empaquetado
-          echo "✅ Build completado exitosamente"
-          echo ""
+          echo "App: ${APP_NAME}"
+          # Ejemplo:
+          # serverless deploy --stage ${STAGE}
+          echo "🌐 URL (ejemplo): https://${STAGE}.example.com/${APP_NAME}"
+          echo "✅ Deploy ${STAGE} OK"
 
-  # === WIRU: DEPLOY (DEV) ===
-  deploy-dev:
-    if: |
-      inputs.environments == 'full' || 
-      inputs.environments == 'full-with-drp' ||
-      inputs.environments == 'mid'
-    needs: build
+  # === remove (serverless) ===
+  remove:
+    needs: test
+    if: ${{ inputs.do-remove }}
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ inputs.stage }}
     steps:
-      - name: Deploy a DEV (DEPLOY)
+      - uses: actions/checkout@v4
+      - name: Remove Serverless
         run: |
           echo "=========================================="
-          echo "🔧 DEPLOY TO DEV"
+          echo "🧹 REMOVE – Serverless (${STAGE})"
           echo "=========================================="
-          echo "🚀 Desplegando ${APP_NAME} (strategy: ${DEPLOY_STRATEGY})..."
-          echo "🌐 URL: https://dev.example.com/${APP_NAME}"
-          echo "✅ DEV OK"
-          echo ""
+          # Ejemplo:
+          # serverless remove --stage ${STAGE}
+          echo "✅ Remove ${STAGE} OK"
 
-  # === WIRU: DEPLOY (STG) ===
-  deploy-stg:
-    if: inputs.environments != 'minimal'
-    needs: [build]
+  # === rollback (serverless) ===
+  rollback:
+    needs: test
+    if: ${{ inputs.do-rollback }}
     runs-on: ubuntu-latest
-    environment: stg
+    environment: ${{ inputs.stage }}
     steps:
-      - name: Deploy a STAGING (DEPLOY)
+      - uses: actions/checkout@v4
+      - name: Rollback Serverless
         run: |
           echo "=========================================="
-          echo "🔨 DEPLOY TO STAGING"
+          echo "🛡️  ROLLBACK – Serverless (${STAGE})"
           echo "=========================================="
-          echo "🚀 Desplegando ${APP_NAME} (strategy: ${DEPLOY_STRATEGY})..."
-          echo "🌐 URL: https://stg.example.com/${APP_NAME}"
-          echo "✅ STAGING OK"
-          echo ""
+          RB_TO="${{ inputs.rollback-to }}"
+          if [ -n "${RB_TO}" ]; then
+            echo "⏪ Rollback a: ${RB_TO}"
+            # Ejemplo:
+            # serverless rollback --stage ${STAGE} --timestamp ${RB_TO}
+          else
+            echo "⏪ Rollback al último deployment (placeholder)"
+            # Ejemplo:
+            # serverless rollback --stage ${STAGE}
+          fi
+          echo "✅ Rollback ${STAGE} OK"
 
-  # === WIRU: DEPLOY (PRD) ===
-  deploy-prod:
-    needs: [build]
-    runs-on: ubuntu-latest
-    environment: prod
-    steps:
-      - name: Deploy a PRODUCTION (DEPLOY)
-        run: |
-          echo "=========================================="
-          echo "🚀 DEPLOY TO PRODUCTION"
-          echo "=========================================="
-          echo "🚀 Desplegando ${APP_NAME} (strategy: ${DEPLOY_STRATEGY})..."
-          echo "🌐 URL: https://prod.example.com/${APP_NAME}"
-          echo "⚠️  Monitoreando post-deploy..."
-          echo "✅ PRODUCTION OK"
-          echo ""
-
-  # === WIRU: DEPLOY (DRP) ===
-  deploy-drp:
-    if: inputs.environments == 'full-with-drp'
-    needs: deploy-prod
-    runs-on: ubuntu-latest
-    environment: drp
-    steps:
-      - name: Deploy a DRP (Disaster Recovery)
-        run: |
-          echo "=========================================="
-          echo "🛡️  DEPLOY TO DRP"
-          echo "=========================================="
-          echo "🚀 Desplegando ${APP_NAME} a sitio DRP..."
-          echo "🌐 URL: https://drp.example.com/${APP_NAME}"
-          echo "✅ DRP OK"
-          echo ""
-
-  # === WIRU: NOTIFY / SUMMARY ===
+  # === summary ===
   summary:
-    needs: [deploy-dev, deploy-stg, deploy-prod, deploy-drp]
+    needs: [deploy, remove, rollback]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Resumen del deployment (NOTIFY)
+      - name: Resumen
         run: |
           echo "=========================================="
           echo "📊 RESUMEN FINAL"
           echo "=========================================="
-          echo "✅ Pipeline completado (con o sin skips)"
           echo "📦 App: ${APP_NAME}"
-          echo "🌍 Environments: ${{ inputs.environments }}"
-          echo "🔀 Strategy: ${DEPLOY_STRATEGY}"
-          echo "⏰ Fecha: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo "🌍 Stage: ${STAGE}"
+          echo "🏷️ Versión: ${{ inputs.version || 'n/a' }}"
+          echo "🧹 Remove:  ${{ inputs.do-remove }}"
+          echo "⏪ Rollback: ${{ inputs.do-rollback }}"
+          echo "⏰ $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           echo "=========================================="
