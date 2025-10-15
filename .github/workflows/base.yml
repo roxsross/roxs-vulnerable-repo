@@ -66,7 +66,7 @@ jobs:
           echo "VERSION: ${INPUT_VERSION}"
        
   wtest:
-    name: "Unit Tests"
+    name: "wtest"
     needs: [init,wversion]
     runs-on: ubuntu-latest
     steps:
@@ -90,7 +90,7 @@ jobs:
           retention-days: 1
   
   wsonar:
-    name: "SonarQube Analysis"
+    name: "wsonar"
     needs: wtest  # 👈 
     runs-on: ubuntu-latest
     steps:
@@ -115,6 +115,7 @@ jobs:
           
   wdeploy_deploy:
     needs: [wtest,wsonar]
+    name: "wdeploy sls"
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
@@ -126,24 +127,11 @@ jobs:
           # serverless deploy --stage "${STAGE}"
           echo "URL: https://${STAGE}.example.com/${APP_NAME}"
 
-  # --- REMOVE: solo manual y con flag do-remove=true ---
-  wdeploy_remove:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
-    needs: [wtest,wsonar]
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Remove Serverless
-        shell: bash
-        run: |
-          echo "REMOVE ${STAGE}"
-          # serverless remove --stage "${STAGE}"
-
   # --- ROLLBACK: solo manual y con flag do-rollback=true ---
   wdeploy_rollback:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
     needs: [wtest,wsonar]
+    name: "wrollback sls"
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
