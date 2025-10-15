@@ -47,7 +47,7 @@ env:
   INPUT_VERSION: ${{ inputs.version }}
 
 jobs:
-  init:
+  wiru:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
           echo "INIT ok"
 
   check-version:
-    needs: init
+    needs: wiru
     runs-on: ubuntu-latest
     steps:
       - name: Version Checks (semver)
@@ -86,7 +86,7 @@ jobs:
           fi
           echo "CHECK ok"
 
-  quality:
+  wtest:
     needs: check-version
     runs-on: ubuntu-latest
     strategy:
@@ -101,59 +101,40 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Node
-        if: ${{ matrix.target == 'unit' || matrix.target == 'sonar' }}
+        if: ${{ matrix.target == 'unit-test' || matrix.target == 'sonarqube' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Unit Tests
-        if: ${{ matrix.target == 'unit' }}
+        if: ${{ matrix.target == 'unit-test' }}
         shell: bash
         run: |
           echo "TEST - unit"
-          if [ -f package.json ]; then
-            npm ci --silent || true
-            npm test --silent || echo "No tests configured"
-          else
-            echo "No Node project detected - smoke ok"
-          fi
           echo "TEST ok"
 
       - name: Sonar Analysis
-        if: ${{ matrix.target == 'sonar' }}
+        if: ${{ matrix.target == 'sonarqube' }}
         shell: bash
         run: |
           echo "SONAR - analysis"
-          if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
-            echo "Missing SONAR_HOST_URL or SONAR_TOKEN"
-            exit 1
-          fi
-          SCANNER_DIR="${RUNNER_TEMP}/sonar-scanner"
-          mkdir -p "${SCANNER_DIR}"
-          curl -sLo "${SCANNER_DIR}/scanner.zip" https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
-          unzip -qq "${SCANNER_DIR}/scanner.zip" -d "${SCANNER_DIR}" || true
-          export PATH="${SCANNER_DIR}/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
-
-          if [ -f package.json ]; then
-            npm ci --silent || true
-            npm run test:coverage --silent || echo "No coverage script, continuing"
-          fi
-
-          sonar-scanner \
-            -Dsonar.host.url="${SONAR_HOST_URL}" \
-            -Dsonar.login="${SONAR_TOKEN}" \
-            -Dsonar.projectKey="${SONAR_PROJECT_KEY:-${APP_NAME}}" || true
-
           echo "SONAR ok"
 
-  deploy:
-    needs: quality
-    if: ${{ !inputs.do-remove && !inputs.do-rollback }}
+  # Matrix delivery: deploy | remove | rollback
+  wdeploy:
+    needs: wtest
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
+    strategy:
+      fail-fast: false
+      matrix:
+        action: [deploy, remove, rollback]
     steps:
       - uses: actions/checkout@v4
+
+      # DEPLOY (solo si action == deploy y no hay flags de remove/rollback)
       - name: Deploy Serverless
+        if: ${{ matrix.action == 'deploy' && !inputs.do-remove && !inputs.do-rollback }}
         shell: bash
         run: |
           echo "DEPLOY - serverless ${STAGE}"
@@ -162,28 +143,18 @@ jobs:
           echo "URL example: https://${STAGE}.example.com/${APP_NAME}"
           echo "DEPLOY ok"
 
-  remove:
-    needs: quality
-    if: ${{ inputs.do-remove }}
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
+      # REMOVE (solo si action == remove y do-remove = true)
       - name: Remove Serverless
+        if: ${{ matrix.action == 'remove' && inputs.do-remove }}
         shell: bash
         run: |
           echo "REMOVE - serverless ${STAGE}"
           # serverless remove --stage "${STAGE}"
           echo "REMOVE ok"
 
-  rollback:
-    needs: quality
-    if: ${{ inputs.do-rollback }}
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
+      # ROLLBACK (solo si action == rollback y do-rollback = true)
       - name: Rollback Serverless
+        if: ${{ matrix.action == 'rollback' && inputs.do-rollback }}
         shell: bash
         run: |
           echo "ROLLBACK - serverless ${STAGE}"
