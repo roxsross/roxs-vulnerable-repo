@@ -68,8 +68,8 @@ jobs:
         shell: bash
         run: |
           echo "=== INIT ==="
-          echo "Installing dependencies..."
-          npm ci --silent || true
+          if [ -f package.json ]; then npm ci --silent || true; fi
+          npm i -g serverless >/dev/null 2>&1 || true
           echo "INIT ok"
 
       - name: VERSION CHECK
@@ -81,8 +81,7 @@ jobs:
             if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
               echo "Valid version: ${INPUT_VERSION}"
             else
-              echo "Invalid version (use semver, e.g. 1.2.3)"
-              exit 1
+              echo "Invalid version (use semver, e.g. 1.2.3)"; exit 1
             fi
           else
             echo "No version provided, continuing..."
@@ -110,7 +109,7 @@ jobs:
         shell: bash
         run: |
           echo "=== UNIT TESTS ==="
-          npm test --silent || echo "No tests configured"
+          if [ -f package.json ]; then npm test --silent || echo "No tests configured"; else echo "Smoke OK"; fi
           echo "Tests ok"
 
       - name: SonarQube Analysis
@@ -118,10 +117,9 @@ jobs:
         shell: bash
         run: |
           echo "=== SONARQUBE ==="
-          echo "Running static analysis..."
+          echo "Running static analysis (placeholder)..."
           echo "SONAR ok"
 
-  # Matrix delivery: deploy | remove | rollback
   wdeploy:
     needs: wtest
     runs-on: ubuntu-latest
@@ -130,30 +128,23 @@ jobs:
       fail-fast: false
       matrix:
         action: [deploy, remove, rollback]
-
-    # Control de ejecución manual vs automática
-    if: ${{ 
-          matrix.action == 'deploy' 
-          || (matrix.action == 'remove' && inputs.do-remove && github.event_name == 'workflow_dispatch')
-          || (matrix.action == 'rollback' && inputs.do-rollback && github.event_name == 'workflow_dispatch')
-        }}
-
     steps:
       - uses: actions/checkout@v4
 
+      # DEPLOY: corre en cualquier trigger y sin flags de remove/rollback
       - name: Deploy Serverless
-        if: ${{ matrix.action == 'deploy' }}
+        if: ${{ matrix.action == 'deploy' && !inputs.do-remove && !inputs.do-rollback }}
         shell: bash
         run: |
           echo "=== DEPLOY ==="
-          echo "Stage: ${STAGE}"
-          echo "App: ${APP_NAME}"
+          echo "Stage: ${STAGE}  App: ${APP_NAME}"
           # serverless deploy --stage "${STAGE}"
           echo "URL: https://${STAGE}.example.com/${APP_NAME}"
           echo "DEPLOY ok"
 
+      # REMOVE: solo manual (workflow_dispatch) + flag do-remove=true
       - name: Remove Serverless
-        if: ${{ matrix.action == 'remove' }}
+        if: ${{ matrix.action == 'remove' && inputs.do-remove && github.event_name == 'workflow_dispatch' }}
         shell: bash
         run: |
           echo "=== REMOVE (Manual) ==="
@@ -161,12 +152,19 @@ jobs:
           # serverless remove --stage "${STAGE}"
           echo "REMOVE ok"
 
+      # Guard para mostrar por qué se salta remove
+      - name: Remove skipped (manual-only)
+        if: ${{ matrix.action == 'remove' && ( !inputs.do-remove || github.event_name != 'workflow_dispatch' ) }}
+        shell: bash
+        run: |
+          echo "Remove is manual-only. Set do-remove=true and run via workflow_dispatch."
+
+      # ROLLBACK: solo manual (workflow_dispatch) + flag do-rollback=true
       - name: Rollback Serverless
-        if: ${{ matrix.action == 'rollback' }}
+        if: ${{ matrix.action == 'rollback' && inputs.do-rollback && github.event_name == 'workflow_dispatch' }}
         shell: bash
         run: |
           echo "=== ROLLBACK (Manual) ==="
-          echo "Stage: ${STAGE}"
           RB_TO="${{ inputs.rollback-to }}"
           if [ -n "${RB_TO}" ]; then
             echo "Rollback to: ${RB_TO}"
@@ -176,3 +174,10 @@ jobs:
             # serverless rollback --stage "${STAGE}"
           fi
           echo "ROLLBACK ok"
+
+      # Guard para mostrar por qué se salta rollback
+      - name: Rollback skipped (manual-only)
+        if: ${{ matrix.action == 'rollback' && ( !inputs.do-rollback || github.event_name != 'workflow_dispatch' ) }}
+        shell: bash
+        run: |
+          echo "Rollback is manual-only. Set do-rollback=true and run via workflow_dispatch."
