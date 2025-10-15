@@ -1,4 +1,4 @@
-name: WIRU Serverless POC
+name: WIRU Serverless POC (clean flow)
 
 on:
   push:
@@ -42,121 +42,153 @@ concurrency:
   group: ${{ github.workflow }}-${{ inputs.app-name }}-${{ inputs.stage }}
   cancel-in-progress: false
 
+defaults:
+  run:
+    shell: bash
+
 env:
   APP_NAME: ${{ inputs.app-name }}
   STAGE: ${{ inputs.stage }}
   INPUT_VERSION: ${{ inputs.version }}
 
-# --- INIT: único y estable ---
-jobs:
-  wiru_init:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: INIT
-        shell: bash
-        run: |
-          echo "INIT"
-          if [ -f package.json ]; then npm ci --silent || true; fi
-          npm i -g serverless >/dev/null 2>&1 || true
-          echo "INIT ok"
+# ───────────────────────────── STAGES ─────────────────────────────
 
-  # --- VERSION CHECK: opcional, depende de INIT (no bloquea tests) ---
-  wiru_versioncheck:
-    needs: wiru_init
-    runs-on: ubuntu-latest
-    steps:
-      - name: VERSION CHECK
-        shell: bash
-        run: |
-          echo "VERSION CHECK"
-          if [ -n "${INPUT_VERSION}" ]; then
-            if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
-              echo "version ok: ${INPUT_VERSION}"
-            else
-              echo "invalid semver"; exit 1
-            fi
+# INIT
+wiru_init:
+  name: "🧰 init"
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install deps & serverless
+      run: |
+        if [ -f package.json ]; then npm ci --silent || true; fi
+        npm i -g serverless >/dev/null 2>&1 || true
+    - name: Version check (optional)
+      run: |
+        if [ -n "${INPUT_VERSION}" ]; then
+          if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
+            echo "version ok: ${INPUT_VERSION}"
           else
-            echo "no version; continue"
+            echo "invalid semver"; exit 1
           fi
+        fi
 
-  # --- TESTS: dependen SOLO de INIT (como pediste) ---
-  wtest:
-    needs: wiru_init
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [unit-test, sonarqube]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        if: ${{ matrix.target == 'unit-test' || matrix.target == 'sonarqube' }}
-        with:
-          node-version: '20'
-
-      - name: Unit Tests
-        if: ${{ matrix.target == 'unit-test' }}
-        shell: bash
-        run: |
-          echo "UNIT TESTS"
-          if [ -f package.json ]; then npm test --silent || echo "no tests"; else echo "smoke ok"; fi
-
-      - name: SonarQube Analysis
-        if: ${{ matrix.target == 'sonarqube' }}
-        shell: bash
-        run: |
-          echo "SONAR (placeholder)"
-          # acá va tu análisis real (scanner o action)
-
-  # --- DEPLOY: siempre tras tests ---
-  wdeploy_deploy:
-    needs: wtest
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy Serverless
-        shell: bash
-        run: |
-          echo "DEPLOY ${STAGE} - ${APP_NAME}"
-          # serverless deploy --stage "${STAGE}"
-          echo "URL: https://${STAGE}.example.com/${APP_NAME}"
-
-  # --- REMOVE: manual + flag ---
-  wdeploy_remove:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
-    needs: wtest
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Remove Serverless
-        shell: bash
-        run: |
-          echo "REMOVE ${STAGE}"
-          # serverless remove --stage "${STAGE}"
-
-  # --- ROLLBACK: manual + flag ---
-  wdeploy_rollback:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
-    needs: wtest
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.stage }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Rollback Serverless
-        shell: bash
-        run: |
-          echo "ROLLBACK ${STAGE}"
-          RB_TO="${{ inputs.rollback-to }}"
-          if [ -n "${RB_TO}" ]; then
-            echo "Rollback to: ${RB_TO}"
-            # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}"
-          else
-            echo "Rollback to last deployment"
-            # serverless rollback --stage "${STAGE}"
+# UNIT TESTS (depende de init)
+wtest_unit:
+  name: "🧪 unit-test"
+  needs: wiru_init
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Run tests with coverage
+      run: |
+        if [ -f package.json ]; then
+          npm ci --silent || true
+          # Ajustá el comando según tu test runner
+          npm test --silent || echo "no tests configured"
+          # Si usás Jest: genera lcov para Sonar
+          if [ -f package.json ]; then
+            npx jest --coverage --coverageReporters=lcov || true
           fi
+        else
+          echo "no Node project; smoke ok"
+        fi
+    - name: Upload coverage (optional)
+      if: ${{ hashFiles('coverage/lcov.info') != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-lcov
+        path: coverage/lcov.info
+
+# SONAR (depende de unit-test)
+wtest_sonar:
+  name: "📊 sonar"
+  needs: wtest_unit
+  runs-on: ubuntu-latest
+  env:
+    SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+    SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Download coverage (optional)
+      uses: actions/download-artifact@v4
+      with:
+        name: coverage-lcov
+        path: coverage
+      continue-on-error: true
+    - name: Sonar Scanner (placeholder)
+      run: |
+        if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
+          echo "Missing SONAR secrets"; exit 1
+        fi
+        SCANNER_DIR="${RUNNER_TEMP}/sonar-scanner"
+        mkdir -p "${SCANNER_DIR}"
+        curl -sLo "${SCANNER_DIR}/scanner.zip" https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
+        unzip -qq "${SCANNER_DIR}/scanner.zip" -d "${SCANNER_DIR}" || true
+        export PATH="${SCANNER_DIR}/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
+
+        # Usa sonar-project.properties si existe. Si no, pasamos claves mínimas:
+        sonar-scanner \
+          -Dsonar.host.url="${SONAR_HOST_URL}" \
+          -Dsonar.login="${SONAR_TOKEN}" \
+          -Dsonar.projectKey="${SONAR_PROJECT_KEY:-${APP_NAME}}" \
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info || true
+
+# DEPLOY (depende de sonar)
+wdeploy_deploy:
+  name: "🚀 deploy"
+  needs: wtest_sonar
+  runs-on: ubuntu-latest
+  environment: ${{ inputs.stage }}
+  steps:
+    - uses: actions/checkout@v4
+    - name: Deploy Serverless
+      run: |
+        echo "deploy ${STAGE} - ${APP_NAME}"
+        # serverless deploy --stage "${STAGE}"
+        echo "url: https://${STAGE}.example.com/${APP_NAME}"
+
+# REMOVE (manual + flag) – depende de sonar
+wdeploy_remove:
+  name: "🧹 remove (manual)"
+  if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
+  needs: wtest_sonar
+  runs-on: ubuntu-latest
+  environment: ${{ inputs.stage }}
+  steps:
+    - uses: actions/checkout@v4
+    - name: Remove Serverless
+      run: |
+        echo "remove ${STAGE}"
+        # serverless remove --stage "${STAGE}"
+
+# ROLLBACK (manual + flag) – depende de sonar
+wdeploy_rollback:
+  name: "⏪ rollback (manual)"
+  if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
+  needs: wtest_sonar
+  runs-on: ubuntu-latest
+  environment: ${{ inputs.stage }}
+  steps:
+    - uses: actions/checkout@v4
+    - name: Rollback Serverless
+      run: |
+        echo "rollback ${STAGE}"
+        RB_TO="${{ inputs.rollback-to }}"
+        if [ -n "${RB_TO}" ]; then
+          echo "rollback to: ${RB_TO}"
+          # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}"
+        else
+          echo "rollback to last deployment"
+          # serverless rollback --stage "${STAGE}"
+        fi
