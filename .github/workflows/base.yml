@@ -115,7 +115,7 @@ jobs:
           
   wdeploy_deploy:
     needs: [wtest,wsonar]
-    name: "wdeploy sls"
+    name: "wsls deploy"
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
@@ -131,7 +131,7 @@ jobs:
   wdeploy_rollback:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
     needs: [wtest,wsonar]
-    name: "wrollback sls"
+    name: "wsls rollback"
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
