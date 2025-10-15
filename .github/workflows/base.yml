@@ -1,16 +1,46 @@
-name: WIRU Serverless POC (matrix tests + sonar, clean flow)
+name: WIRU Serverless POC
 on:
   push:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      app-name:
+        description: 'Application name'
+        required: false
+        type: string
+        default: 'my-app'
+      stage:
+        description: 'Stage: dev | stg'
+        required: true
+        type: string
+      version:
+        description: 'App version (semver, optional)'
+        required: false
+        type: string
+        default: ''
+      do-remove:
+        description: 'Execute serverless remove (manual only)'
+        required: false
+        type: boolean
+        default: false
+      do-rollback:
+        description: 'Execute serverless rollback (manual only)'
+        required: false
+        type: boolean
+        default: false
+      rollback-to:
+        description: 'Rollback timestamp/ID (optional)'
+        required: false
+        type: string
+        default: ''
+
 permissions:
   contents: read
-defaults:
-  run:
-    shell: bash
-env:
-  APP_NAME: ${{ github.event.inputs.app-name || 'my-app' }}
-  STAGE: ${{ github.event.inputs.stage || 'dev' }}
-  INPUT_VERSION: ${{ github.event.inputs.version || '' }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.app-name }}-${{ inputs.stage }}
+  cancel-in-progress: false
+
   
 jobs:
   init:
@@ -82,3 +112,51 @@ jobs:
           #   -Dsonar.projectKey=my-project \
           #   -Dsonar.sources=src \
           #   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          
+  wdeploy_deploy:
+    needs: [wtest,wsonar]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Serverless
+        shell: bash
+        run: |
+          echo "DEPLOY ${STAGE} - ${APP_NAME}"
+          # serverless deploy --stage "${STAGE}"
+          echo "URL: https://${STAGE}.example.com/${APP_NAME}"
+
+  # --- REMOVE: solo manual y con flag do-remove=true ---
+  wdeploy_remove:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
+    needs: [wtest,wsonar]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove Serverless
+        shell: bash
+        run: |
+          echo "REMOVE ${STAGE}"
+          # serverless remove --stage "${STAGE}"
+
+  # --- ROLLBACK: solo manual y con flag do-rollback=true ---
+  wdeploy_rollback:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
+    needs: [wtest,wsonar]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rollback Serverless
+        shell: bash
+        run: |
+          echo "ROLLBACK ${STAGE}"
+          RB_TO="${{ inputs.rollback-to }}"
+          if [ -n "${RB_TO}" ]; then
+            echo "Rollback to: ${RB_TO}"
+            # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}"
+          else
+            echo "Rollback to last deployment"
+            # serverless rollback --stage "${STAGE}"
+          fi
