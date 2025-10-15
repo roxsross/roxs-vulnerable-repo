@@ -51,144 +51,140 @@ env:
   STAGE: ${{ inputs.stage }}
   INPUT_VERSION: ${{ inputs.version }}
 
-# ───────────────────────────── STAGES ─────────────────────────────
-
-# INIT
-wiru_init:
-  name: "🧰 init"
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Install deps & serverless
-      run: |
-        if [ -f package.json ]; then npm ci --silent || true; fi
-        npm i -g serverless >/dev/null 2>&1 || true
-    - name: Version check (optional)
-      run: |
-        if [ -n "${INPUT_VERSION}" ]; then
-          if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
-            echo "version ok: ${INPUT_VERSION}"
-          else
-            echo "invalid semver"; exit 1
+# ──────────────── JOBS ────────────────
+jobs:
+  # INIT
+  wiru_init:
+    name: "🧰 init"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps & serverless
+        run: |
+          if [ -f package.json ]; then npm ci --silent || true; fi
+          npm i -g serverless >/dev/null 2>&1 || true
+      - name: Version check (optional)
+        run: |
+          if [ -n "${INPUT_VERSION}" ]; then
+            if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
+              echo "version ok: ${INPUT_VERSION}"
+            else
+              echo "invalid semver"; exit 1
+            fi
           fi
-        fi
 
-# UNIT TESTS (depende de init)
-wtest_unit:
-  name: "🧪 unit-test"
-  needs: wiru_init
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Run tests with coverage
-      run: |
-        if [ -f package.json ]; then
-          npm ci --silent || true
-          # Ajustá el comando según tu test runner
-          npm test --silent || echo "no tests configured"
-          # Si usás Jest: genera lcov para Sonar
+  # UNIT TESTS (depende de init)
+  wtest_unit:
+    name: "🧪 unit-test"
+    needs: wiru_init
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run tests with coverage
+        run: |
           if [ -f package.json ]; then
+            npm ci --silent || true
+            npm test --silent || echo "no tests configured"
+            # Si usás Jest, generá lcov para Sonar:
             npx jest --coverage --coverageReporters=lcov || true
+          else
+            echo "no Node project; smoke ok"
           fi
-        else
-          echo "no Node project; smoke ok"
-        fi
-    - name: Upload coverage (optional)
-      if: ${{ hashFiles('coverage/lcov.info') != '' }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-lcov
-        path: coverage/lcov.info
+      - name: Upload coverage (optional)
+        if: ${{ hashFiles('coverage/lcov.info') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
 
-# SONAR (depende de unit-test)
-wtest_sonar:
-  name: "📊 sonar"
-  needs: wtest_unit
-  runs-on: ubuntu-latest
-  env:
-    SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-    SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-    SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Download coverage (optional)
-      uses: actions/download-artifact@v4
-      with:
-        name: coverage-lcov
-        path: coverage
-      continue-on-error: true
-    - name: Sonar Scanner (placeholder)
-      run: |
-        if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
-          echo "Missing SONAR secrets"; exit 1
-        fi
-        SCANNER_DIR="${RUNNER_TEMP}/sonar-scanner"
-        mkdir -p "${SCANNER_DIR}"
-        curl -sLo "${SCANNER_DIR}/scanner.zip" https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
-        unzip -qq "${SCANNER_DIR}/scanner.zip" -d "${SCANNER_DIR}" || true
-        export PATH="${SCANNER_DIR}/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
+  # SONAR (depende de unit-test)
+  wtest_sonar:
+    name: "📊 sonar"
+    needs: wtest_unit
+    runs-on: ubuntu-latest
+    env:
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Download coverage (optional)
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage
+        continue-on-error: true
+      - name: Sonar Scanner (placeholder)
+        run: |
+          if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
+            echo "Missing SONAR secrets"; exit 1
+          fi
+          SCANNER_DIR="${RUNNER_TEMP}/sonar-scanner"
+          mkdir -p "${SCANNER_DIR}"
+          curl -sLo "${SCANNER_DIR}/scanner.zip" https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
+          unzip -qq "${SCANNER_DIR}/scanner.zip" -d "${SCANNER_DIR}" || true
+          export PATH="${SCANNER_DIR}/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
 
-        # Usa sonar-project.properties si existe. Si no, pasamos claves mínimas:
-        sonar-scanner \
-          -Dsonar.host.url="${SONAR_HOST_URL}" \
-          -Dsonar.login="${SONAR_TOKEN}" \
-          -Dsonar.projectKey="${SONAR_PROJECT_KEY:-${APP_NAME}}" \
-          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info || true
+          sonar-scanner \
+            -Dsonar.host.url="${SONAR_HOST_URL}" \
+            -Dsonar.login="${SONAR_TOKEN}" \
+            -Dsonar.projectKey="${SONAR_PROJECT_KEY:-${APP_NAME}}" \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info || true
 
-# DEPLOY (depende de sonar)
-wdeploy_deploy:
-  name: "🚀 deploy"
-  needs: wtest_sonar
-  runs-on: ubuntu-latest
-  environment: ${{ inputs.stage }}
-  steps:
-    - uses: actions/checkout@v4
-    - name: Deploy Serverless
-      run: |
-        echo "deploy ${STAGE} - ${APP_NAME}"
-        # serverless deploy --stage "${STAGE}"
-        echo "url: https://${STAGE}.example.com/${APP_NAME}"
+  # DEPLOY (depende de sonar)
+  wdeploy_deploy:
+    name: "🚀 deploy"
+    needs: wtest_sonar
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Serverless
+        run: |
+          echo "deploy ${STAGE} - ${APP_NAME}"
+          # serverless deploy --stage "${STAGE}"
+          echo "url: https://${STAGE}.example.com/${APP_NAME}"
 
-# REMOVE (manual + flag) – depende de sonar
-wdeploy_remove:
-  name: "🧹 remove (manual)"
-  if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
-  needs: wtest_sonar
-  runs-on: ubuntu-latest
-  environment: ${{ inputs.stage }}
-  steps:
-    - uses: actions/checkout@v4
-    - name: Remove Serverless
-      run: |
-        echo "remove ${STAGE}"
-        # serverless remove --stage "${STAGE}"
+  # REMOVE (manual + flag) – depende de sonar
+  wdeploy_remove:
+    name: "🧹 remove (manual)"
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
+    needs: wtest_sonar
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove Serverless
+        run: |
+          echo "remove ${STAGE}"
+          # serverless remove --stage "${STAGE}"
 
-# ROLLBACK (manual + flag) – depende de sonar
-wdeploy_rollback:
-  name: "⏪ rollback (manual)"
-  if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
-  needs: wtest_sonar
-  runs-on: ubuntu-latest
-  environment: ${{ inputs.stage }}
-  steps:
-    - uses: actions/checkout@v4
-    - name: Rollback Serverless
-      run: |
-        echo "rollback ${STAGE}"
-        RB_TO="${{ inputs.rollback-to }}"
-        if [ -n "${RB_TO}" ]; then
-          echo "rollback to: ${RB_TO}"
-          # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}"
-        else
-          echo "rollback to last deployment"
-          # serverless rollback --stage "${STAGE}"
-        fi
+  # ROLLBACK (manual + flag) – depende de sonar
+  wdeploy_rollback:
+    name: "⏪ rollback (manual)"
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
+    needs: wtest_sonar
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rollback Serverless
+        run: |
+          echo "rollback ${STAGE}"
+          RB_TO="${{ inputs.rollback-to }}"
+          if [ -n "${RB_TO}" ]; then
+            echo "rollback to: ${RB_TO}"
+            # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}"
+          else
+            echo "rollback to last deployment"
+            # serverless rollback --stage "${STAGE}"
+          fi
