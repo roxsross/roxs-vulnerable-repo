@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20]
+        node: [18, 20, 22]
     steps:
       - name: Simulate unit tests
         run: |
@@ -111,14 +111,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scanner: [sonarqube]
+        scanner: [sonarqube, sonarcloud]
     steps:
       - name: Simulate Sonar analysis
         run: |
           echo "📊 Running Sonar analysis (${{ matrix.scanner }})..."
           echo "Downloading Sonar Scanner..."
           echo "Analyzing code quality..."
-          echo "Uploading results to SonarQube..."
+          echo "Uploading results to ${{ matrix.scanner }}..."
           echo "✅ Sonar analysis complete!"
 
   # ─────────────────────────── DEPLOY dep SONAR ───────────────────────────
