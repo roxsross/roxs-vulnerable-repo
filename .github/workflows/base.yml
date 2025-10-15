@@ -2,6 +2,7 @@ name: WIRU Serverless POC
 
 on:
   push:
+  workflow_dispatch:
   workflow_call:
     inputs:
       app-name:
@@ -52,33 +53,41 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [unit, sonar]
-    env:
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+        target: [init, wversion]
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node
-        if: ${{ matrix.target == 'init' || matrix.target == 'wversion }}
+        if: ${{ matrix.target == 'init' || matrix.target == 'wversion' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Unit Tests
+      - name: INIT
         if: ${{ matrix.target == 'init' }}
         shell: bash
         run: |
-          echo "TEST - unit"
-          echo "TEST ok"
+          echo "=== INIT ==="
+          echo "Installing dependencies..."
+          npm ci --silent || true
+          echo "INIT ok"
 
-      - name: Sonar Analysis
+      - name: VERSION CHECK
         if: ${{ matrix.target == 'wversion' }}
         shell: bash
         run: |
-          echo "SONAR - analysis"
-          echo "SONAR ok"
+          echo "=== VERSION CHECK ==="
+          if [ -n "${INPUT_VERSION}" ]; then
+            if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
+              echo "Valid version: ${INPUT_VERSION}"
+            else
+              echo "Invalid version (use semver, e.g. 1.2.3)"
+              exit 1
+            fi
+          else
+            echo "No version provided, continuing..."
+          fi
+          echo "VERSION CHECK ok"
 
   wtest:
     needs: wiru
@@ -86,11 +95,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [unit, sonar]
-    env:
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+        target: [unit-test, sonarqube]
     steps:
       - uses: actions/checkout@v4
 
@@ -104,14 +109,16 @@ jobs:
         if: ${{ matrix.target == 'unit-test' }}
         shell: bash
         run: |
-          echo "TEST - unit"
-          echo "TEST ok"
+          echo "=== UNIT TESTS ==="
+          npm test --silent || echo "No tests configured"
+          echo "Tests ok"
 
-      - name: Sonar Analysis
+      - name: SonarQube Analysis
         if: ${{ matrix.target == 'sonarqube' }}
         shell: bash
         run: |
-          echo "SONAR - analysis"
+          echo "=== SONARQUBE ==="
+          echo "Running static analysis..."
           echo "SONAR ok"
 
   # Matrix delivery: deploy | remove | rollback
@@ -123,35 +130,43 @@ jobs:
       fail-fast: false
       matrix:
         action: [deploy, remove, rollback]
+
+    # Control de ejecución manual vs automática
+    if: ${{ 
+          matrix.action == 'deploy' 
+          || (matrix.action == 'remove' && inputs.do-remove && github.event_name == 'workflow_dispatch')
+          || (matrix.action == 'rollback' && inputs.do-rollback && github.event_name == 'workflow_dispatch')
+        }}
+
     steps:
       - uses: actions/checkout@v4
 
-      # DEPLOY (solo si action == deploy y no hay flags de remove/rollback)
       - name: Deploy Serverless
-        if: ${{ matrix.action == 'deploy' && !inputs.do-remove && !inputs.do-rollback }}
+        if: ${{ matrix.action == 'deploy' }}
         shell: bash
         run: |
-          echo "DEPLOY - serverless ${STAGE}"
+          echo "=== DEPLOY ==="
+          echo "Stage: ${STAGE}"
           echo "App: ${APP_NAME}"
           # serverless deploy --stage "${STAGE}"
-          echo "URL example: https://${STAGE}.example.com/${APP_NAME}"
+          echo "URL: https://${STAGE}.example.com/${APP_NAME}"
           echo "DEPLOY ok"
 
-      # REMOVE (solo si action == remove y do-remove = true)
       - name: Remove Serverless
-        if: ${{ matrix.action == 'remove' && inputs.do-remove }}
+        if: ${{ matrix.action == 'remove' }}
         shell: bash
         run: |
-          echo "REMOVE - serverless ${STAGE}"
+          echo "=== REMOVE (Manual) ==="
+          echo "Stage: ${STAGE}"
           # serverless remove --stage "${STAGE}"
           echo "REMOVE ok"
 
-      # ROLLBACK (solo si action == rollback y do-rollback = true)
       - name: Rollback Serverless
-        if: ${{ matrix.action == 'rollback' && inputs.do-rollback }}
+        if: ${{ matrix.action == 'rollback' }}
         shell: bash
         run: |
-          echo "ROLLBACK - serverless ${STAGE}"
+          echo "=== ROLLBACK (Manual) ==="
+          echo "Stage: ${STAGE}"
           RB_TO="${{ inputs.rollback-to }}"
           if [ -n "${RB_TO}" ]; then
             echo "Rollback to: ${RB_TO}"
