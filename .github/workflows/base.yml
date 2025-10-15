@@ -46,32 +46,26 @@ env:
   STAGE: ${{ inputs.stage }}
 
 jobs:
-  # === init ===
   init:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: install dependencies
         run: |
-          echo "=========================================="
           echo "🚀 INIT – install dependencies"
-          echo "=========================================="
           if [ -f "package.json" ]; then
             npm ci --silent || true
           fi
           npm i -g serverless >/dev/null 2>&1 || true
           echo "✅ Entorno listo"
 
-  # === check (solo Version Checks) ===
   check-version:
     needs: init
     runs-on: ubuntu-latest
     steps:
       - name: Version Checks (semver)
         run: |
-          echo "=========================================="
           echo "🔍 CHECK – Version Checks"
-          echo "=========================================="
           echo "Stage: ${STAGE}"
           if [ "${STAGE}" = "prod" ]; then
             echo "❌ Deploy a PROD no permitido en esta POC"
@@ -90,7 +84,6 @@ jobs:
           fi
           echo "✅ Checks OK"
 
-  # === quality (matrix: unit tests | sonar) ===
   quality:
     needs: check-version
     runs-on: ubuntu-latest
@@ -98,24 +91,22 @@ jobs:
       matrix:
         target: [unit, sonar]
     env:
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}   # ej: https://sonar.nx/staging
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }} # opcional si no está en sonar-project.properties
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node (for unit & sonar)
-        if: matrix.target == 'unit' || matrix.target == 'sonar'
+        if: ${{ matrix.target == 'unit' || matrix.target == 'sonar' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Unit Tests (matrix: unit)
-        if: matrix.target == 'unit'
+        if: ${{ matrix.target == 'unit' }}
         run: |
-          echo "=========================================="
           echo "🧪 TEST – Unit (matrix)"
-          echo "=========================================="
           if [ -f "package.json" ]; then
             npm ci --silent || true
             npm test --silent || echo "ℹ️ Tests no configurados, continuo…"
@@ -126,38 +117,31 @@ jobs:
           echo "✅ Unit tests completados"
 
       - name: Sonar Analysis (matrix: sonar)
-        if: matrix.target == 'sonar'
+        if: ${{ matrix.target == 'sonar' }}
         run: |
-          echo "=========================================="
           echo "📊 SONAR – Static Analysis (matrix)"
-          echo "=========================================="
           if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
             echo "❌ Faltan secrets SONAR_HOST_URL / SONAR_TOKEN"
             exit 1
           fi
-          # Si tenés sonar-scanner instalado en el repo, usalo; si no, descargar binario temporal:
           SCANNER_DIR="$RUNNER_TEMP/sonar-scanner"
           mkdir -p "$SCANNER_DIR"
           curl -sLo "$SCANNER_DIR/sonar-scanner.zip" https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
           unzip -qq "$SCANNER_DIR/sonar-scanner.zip" -d "$SCANNER_DIR" || true
           export PATH="$SCANNER_DIR/sonar-scanner-5.0.1.3006-linux/bin:$PATH"
 
-          # Generar cobertura si existe configuración (opcional)
           if [ -f "package.json" ]; then
             npm ci --silent || true
             npm run test:coverage --silent || echo "ℹ️ Sin script coverage, continuo…"
           fi
 
-          # Ejecutar análisis (usa sonar-project.properties si está presente)
           sonar-scanner \
             -Dsonar.host.url="${SONAR_HOST_URL}" \
             -Dsonar.login="${SONAR_TOKEN}" \
             -Dsonar.projectKey="${SONAR_PROJECT_KEY:-${APP_NAME}}" || true
 
-          echo "✅ Sonar analysis ejecutado (staging)"
-          echo ""
+          echo "✅ Sonar analysis ejecutado"
 
-  # === deploy (serverless) ===
   deploy:
     needs: quality
     if: ${{ !inputs.do-remove && !inputs.do-rollback }}
@@ -167,16 +151,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Deploy Serverless
         run: |
-          echo "=========================================="
           echo "🚀 DEPLOY – Serverless (${STAGE})"
-          echo "=========================================="
           echo "App: ${APP_NAME}"
-          # Ejemplo:
           # serverless deploy --stage ${STAGE}
           echo "🌐 URL (ejemplo): https://${STAGE}.example.com/${APP_NAME}"
           echo "✅ Deploy ${STAGE} OK"
 
-  # === remove (serverless) ===
   remove:
     needs: quality
     if: ${{ inputs.do-remove }}
@@ -186,13 +166,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Remove Serverless
         run: |
-          echo "=========================================="
           echo "🧹 REMOVE – Serverless (${STAGE})"
-          echo "=========================================="
           # serverless remove --stage ${STAGE}
           echo "✅ Remove ${STAGE} OK"
 
-  # === rollback (serverless) ===
   rollback:
     needs: quality
     if: ${{ inputs.do-rollback }}
@@ -202,9 +179,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rollback Serverless
         run: |
-          echo "=========================================="
           echo "🛡️  ROLLBACK – Serverless (${STAGE})"
-          echo "=========================================="
           RB_TO="${{ inputs.rollback-to }}"
           if [ -n "${RB_TO}" ]; then
             echo "⏪ Rollback a: ${RB_TO}"
