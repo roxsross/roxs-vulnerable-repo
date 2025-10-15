@@ -14,7 +14,7 @@ on:
         required: true
         type: string
       version:
-        description: 'App version (semver, opcional)'
+        description: 'App version (semver, optional)'
         required: false
         type: string
         default: ''
@@ -44,6 +44,7 @@ concurrency:
 env:
   APP_NAME: ${{ inputs.app-name }}
   STAGE: ${{ inputs.stage }}
+  INPUT_VERSION: ${{ inputs.version }}
 
 jobs:
   init:
@@ -53,12 +54,12 @@ jobs:
       - name: install dependencies
         shell: bash
         run: |
-          echo "🚀 INIT – install dependencies"
-          if [ -f "package.json" ]; then
+          echo "INIT - install dependencies"
+          if [ -f package.json ]; then
             npm ci --silent || true
           fi
           npm i -g serverless >/dev/null 2>&1 || true
-          echo "✅ Entorno listo"
+          echo "INIT ok"
 
   check-version:
     needs: init
@@ -67,24 +68,23 @@ jobs:
       - name: Version Checks (semver)
         shell: bash
         run: |
-          echo "🔍 CHECK – Version Checks"
+          echo "CHECK - version checks"
           echo "Stage: ${STAGE}"
           if [ "${STAGE}" = "prod" ]; then
-            echo "❌ Deploy a PROD no permitido en esta POC"
+            echo "Deploy to prod is not allowed in this POC"
             exit 1
           fi
-          VERSION="${{ inputs.version }}"
-          if [ -n "${VERSION}" ]; then
-            if echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([\-+][A-Za-z0-9\.-]+)?$'; then
-              echo "✅ Versión válida: ${VERSION}"
+          if [ -n "${INPUT_VERSION}" ]; then
+            if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
+              echo "Valid version: ${INPUT_VERSION}"
             else
-              echo "❌ Versión inválida (use semver, ej: 1.2.3)"
+              echo "Invalid version (use semver, e.g. 1.2.3)"
               exit 1
             fi
           else
-            echo "ℹ️ Sin versión provista, continuo…"
+            echo "No version provided, continuing..."
           fi
-          echo "✅ Checks OK"
+          echo "CHECK ok"
 
   quality:
     needs: check-version
@@ -100,55 +100,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node (for unit & sonar)
+      - name: Setup Node
         if: ${{ matrix.target == 'unit' || matrix.target == 'sonar' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Unit Tests (matrix: unit)
+      - name: Unit Tests
         if: ${{ matrix.target == 'unit' }}
         shell: bash
         run: |
-          echo "🧪 TEST – Unit (matrix)"
-          if [ -f "package.json" ]; then
+          echo "TEST - unit"
+          if [ -f package.json ]; then
             npm ci --silent || true
-            npm test --silent || echo "ℹ️ Tests no configurados, continuo…"
+            npm test --silent || echo "No tests configured"
           else
-            echo "ℹ️ No se detectó Node; smoke test"
-            echo "ok"
+            echo "No Node project detected - smoke ok"
           fi
-          echo "✅ Unit tests completados"
+          echo "TEST ok"
 
-      - name: Sonar Analysis (matrix: sonar)
+      - name: Sonar Analysis
         if: ${{ matrix.target == 'sonar' }}
         shell: bash
         run: |
-          echo "📊 SONAR – Static Analysis (matrix)"
+          echo "SONAR - analysis"
           if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
-            echo "❌ Faltan secrets SONAR_HOST_URL / SONAR_TOKEN"
+            echo "Missing SONAR_HOST_URL or SONAR_TOKEN"
             exit 1
           fi
-
           SCANNER_DIR="${RUNNER_TEMP}/sonar-scanner"
           mkdir -p "${SCANNER_DIR}"
-          curl -sLo "${SCANNER_DIR}/sonar-scanner.zip" \
-            https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
-          unzip -qq "${SCANNER_DIR}/sonar-scanner.zip" -d "${SCANNER_DIR}" || true
+          curl -sLo "${SCANNER_DIR}/scanner.zip" https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip || true
+          unzip -qq "${SCANNER_DIR}/scanner.zip" -d "${SCANNER_DIR}" || true
           export PATH="${SCANNER_DIR}/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
 
-          if [ -f "package.json" ]; then
+          if [ -f package.json ]; then
             npm ci --silent || true
-            npm run test:coverage --silent || echo "ℹ️ Sin script coverage, continuo…"
+            npm run test:coverage --silent || echo "No coverage script, continuing"
           fi
 
-          # Usa sonar-project.properties si existe; si no, toma APP_NAME
           sonar-scanner \
             -Dsonar.host.url="${SONAR_HOST_URL}" \
             -Dsonar.login="${SONAR_TOKEN}" \
             -Dsonar.projectKey="${SONAR_PROJECT_KEY:-${APP_NAME}}" || true
 
-          echo "✅ Sonar analysis ejecutado"
+          echo "SONAR ok"
 
   deploy:
     needs: quality
@@ -160,11 +156,11 @@ jobs:
       - name: Deploy Serverless
         shell: bash
         run: |
-          echo "🚀 DEPLOY – Serverless (${STAGE})"
+          echo "DEPLOY - serverless ${STAGE}"
           echo "App: ${APP_NAME}"
           # serverless deploy --stage "${STAGE}"
-          echo "🌐 URL (ejemplo): https://${STAGE}.example.com/${APP_NAME}"
-          echo "✅ Deploy ${STAGE} OK"
+          echo "URL example: https://${STAGE}.example.com/${APP_NAME}"
+          echo "DEPLOY ok"
 
   remove:
     needs: quality
@@ -176,9 +172,9 @@ jobs:
       - name: Remove Serverless
         shell: bash
         run: |
-          echo "🧹 REMOVE – Serverless (${STAGE})"
+          echo "REMOVE - serverless ${STAGE}"
           # serverless remove --stage "${STAGE}"
-          echo "✅ Remove ${STAGE} OK"
+          echo "REMOVE ok"
 
   rollback:
     needs: quality
@@ -190,13 +186,13 @@ jobs:
       - name: Rollback Serverless
         shell: bash
         run: |
-          echo "🛡️  ROLLBACK – Serverless (${STAGE})"
+          echo "ROLLBACK - serverless ${STAGE}"
           RB_TO="${{ inputs.rollback-to }}"
           if [ -n "${RB_TO}" ]; then
-            echo "⏪ Rollback a: ${RB_TO}"
+            echo "Rollback to: ${RB_TO}"
             # serverless rollback --stage "${STAGE}" --timestamp "${RB_TO}"
           else
-            echo "⏪ Rollback al último deployment"
+            echo "Rollback to last deployment"
             # serverless rollback --stage "${STAGE}"
           fi
-          echo "✅ Rollback ${STAGE} OK"
+          echo "ROLLBACK ok"
