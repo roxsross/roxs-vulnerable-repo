@@ -23,10 +23,21 @@ jobs:
           echo "APP_NAME: ${APP_NAME}"
           echo "STAGE: ${STAGE}"
           echo "VERSION: ${INPUT_VERSION}"
-  
+          
+  wversion:
+    name: "wversion"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Simulate init
+        run: |
+          echo "🧰 Initializing workflow..."
+          echo "APP_NAME: ${APP_NAME}"
+          echo "STAGE: ${STAGE}"
+          echo "VERSION: ${INPUT_VERSION}"
+       
   wtest:
     name: "Unit Tests"
-    needs: init
+    needs: [init,wversion]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -50,7 +61,7 @@ jobs:
   
   wsonar:
     name: "SonarQube Analysis"
-    needs: wtest  # 👈 Espera a que los tests terminen
+    needs: wtest  # 👈 
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -60,13 +71,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with: { node-version: '20' }
-      
-      - name: Download Coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage/
-      
+        
       - name: SonarQube Analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
