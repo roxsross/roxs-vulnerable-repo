@@ -81,14 +81,10 @@ jobs:
           fi
 
   # Matrix de unit tests (validación multi-runtime) – NO bloquea Sonar
-  wtest_unit_matrix:
-    name: "wtest (unit matrix)"
+  wtest:
+    name: "wtest"
     needs: init
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: [20]   # agrega 18, 22 si querés
     steps:
       - uses: actions/checkout@v4
       - name: Run unit tests
@@ -99,7 +95,7 @@ jobs:
 
   # Job rápido para generar cobertura una sola vez
   wtest_coverage:
-    name: "wtest (coverage)"
+    name: "wcoverage"
     needs: init
     runs-on: ubuntu-latest
     steps:
@@ -148,7 +144,7 @@ jobs:
   #  - y el matrix de unit tests completo (wtest_unit_matrix)
   wdeploy_deploy:
     name: "wsls deploy"
-    needs: [wsonar, wtest_unit_matrix]
+    needs: [wsonar, wtest]
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
@@ -161,7 +157,7 @@ jobs:
   wdeploy_rollback:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
     name: "wsls rollback"
-    needs: [wsonar, wtest_unit_matrix]
+    needs: [wsonar, wtest]
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
@@ -174,7 +170,7 @@ jobs:
   wdeploy_remove:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
     name: "wsls remove"
-    needs: [wsonar, wtest_unit_matrix]
+    needs: [wsonar, wtest]
     runs-on: ubuntu-latest
     environment: ${{ inputs.stage }}
     steps:
