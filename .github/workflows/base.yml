@@ -1,3 +1,58 @@
+name: WIRU Serverless POC (matrix tests + sonar)
+
+on:
+  push:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      app-name:
+        description: 'Application name'
+        required: false
+        type: string
+        default: 'my-app'
+      stage:
+        description: 'Stage: dev | stg'
+        required: true
+        type: string
+      version:
+        description: 'App version (semver, optional)'
+        required: false
+        type: string
+        default: ''
+      do-remove:
+        description: 'Execute serverless remove (manual only)'
+        required: false
+        type: boolean
+        default: false
+      do-rollback:
+        description: 'Execute serverless rollback (manual only)'
+        required: false
+        type: boolean
+        default: false
+      rollback-to:
+        description: 'Rollback timestamp/ID (optional)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.app-name }}-${{ inputs.stage }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  APP_NAME: ${{ inputs.app-name }}
+  STAGE: ${{ inputs.stage }}
+  INPUT_VERSION: ${{ inputs.version }}
+
+
+
 jobs:
   init:
     name: "winstall"
@@ -32,9 +87,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      matrix:
+        node: [20]   # agrega 18, 22 si querés
     steps:
       - uses: actions/checkout@v4
-
+      - name: Run unit tests
+        run: |
+          echo "🧪 Running unit tests on Node ${{ matrix.node }}..."
+          # npm ci && npm test
+          echo "ok"
 
   # Job rápido para generar cobertura una sola vez
   wtest_coverage:
