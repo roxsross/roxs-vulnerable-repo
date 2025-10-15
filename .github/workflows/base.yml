@@ -1,16 +1,17 @@
 name: WIRU Serverless POC (matrix tests + sonar, clean flow)
-
 on:
   push:
   workflow_dispatch:
 permissions:
   contents: read
-
+defaults:
+  run:
+    shell: bash
 env:
   APP_NAME: ${{ github.event.inputs.app-name || 'my-app' }}
   STAGE: ${{ github.event.inputs.stage || 'dev' }}
   INPUT_VERSION: ${{ github.event.inputs.version || '' }}
-
+  
 jobs:
   init:
     name: "winstall"
@@ -22,33 +23,61 @@ jobs:
           echo "APP_NAME: ${APP_NAME}"
           echo "STAGE: ${STAGE}"
           echo "VERSION: ${INPUT_VERSION}"
-
+  
   wtest:
+    name: "Unit Tests"
     needs: init
     runs-on: ubuntu-latest
-    outputs:
-      test_status: ${{ steps.test.outcome }}
-    strategy:
-      matrix: { target: [wtest, wsonar] }
     steps:
       - uses: actions/checkout@v5
+      
       - name: Setup Node
-        if: matrix.target == 'wtest' || matrix.target == 'wsonar'
         uses: actions/setup-node@v4
         with: { node-version: '20' }
       
-      - name: Unit Tests
-        id: test
-        if: matrix.target == 'wtest'
-        run: echo "UNIT TESTS"
-      
-      - name: Wait for wtest
-        if: matrix.target == 'wsonar'
+      - name: Run Tests
         run: |
-          # Esto NO funciona porque los jobs de matriz son independientes
-          echo "Cannot wait for parallel job"
+          echo "🧪 Running unit tests..."
+          # npm test
+          # npm run test:coverage
       
-      - name: SonarQube
-        if: matrix.target == 'wsonar'
-        run: echo "SONAR"
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 1
+  
+  wsonar:
+    name: "SonarQube Analysis"
+    needs: wtest  # 👈 Espera a que los tests terminen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Necesario para SonarQube
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      
+      - name: Download Coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+      
+      - name: SonarQube Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          echo "📊 Running SonarQube analysis..."
+          # sonar-scanner \
+          #   -Dsonar.projectKey=my-project \
+          #   -Dsonar.sources=src \
+          #   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
+**Flujo de ejecución:**
+```
+init → wtest → wsonar
