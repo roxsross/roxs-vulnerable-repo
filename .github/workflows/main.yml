@@ -1,67 +1,38 @@
-name: seguridad
+###################################################################################################
+############################# ShamanOps pipeline | GitHub Actions #################################
+###################################################################################################
+name: ShamanOps
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - master
-  pull_request:
-
-permissions:
-  security-events: write
-  actions: read
-  contents: read
-  checks: write
-  pull-requests: write
+    branches: [ "main" ]
 jobs:
-
-  secret_Scan:
-    name: Gitleak Scan
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Run gitleaks scanner
-        uses: gitleaks/gitleaks-action@v2
-        continue-on-error: true
-
-  Snyk_Scan:
-    name: Snyk Scan
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Run Snyk vulnerability scanner
-        uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high --sarif-file-output=snyk-results.sarif
-        continue-on-error: true
-      - name: Upload Snyk scan results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-            sarif_file: snyk-results.sarif
-            category: snyk
-
-  Trivy_Scan:
-    name: Trivy Scan
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Build an image from Dockerfile
-        run: docker build -t docker.io/roxsross12/roxs-vulnerable-repo:${{ github.sha }} .
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: 'docker.io/roxsross12/roxs-vulnerable-repo:${{ github.sha }}'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-        #   exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-            sarif_file: trivy-results.sarif
-            category: trivy
+  shamanops:
+    uses: shamanops/resources/.github/workflows/base-stable.yaml@main
+    with:
+    # Runner type
+      runs_on: 'self-hosted'
+      runs_on_build: 'ubuntu-latest'
+    # Environments:
+    # full-with-drp (dev/stg/prod/drp) | full (dev/stg/prod) | mid (stg/prod) | minimal (prod)
+      environments: 'full'
+    # Project
+      projectName: 'examples'
+#-------------------------------------------------------------------------------------------------#
+## Features  -------------------------------------------------------------------------------------#
+    # Approvals
+      shamanopsBusinessApprovers: 'business-user@customer.com'
+      shamanopsTechnicalApprovers: 'technical-user@customer.com'
+#-------------------------------------------------------------------------------------------------#
+    secrets:
+      shamanops_customer_token: ${{ secrets.shamanops_customer_token }}
+      shamanops_argocd_dev_token: ${{ secrets.shamanops_argocd_dev_token }}
+      shamanops_argocd_stg_token: ${{ secrets.shamanops_argocd_stg_token }}
+      shamanops_argocd_prod_token: ${{ secrets.shamanops_argocd_prod_token }}
+      shamanops_argocd_drp_token: ${{ secrets.shamanops_argocd_drp_token }}
+      shamanops_manifest_repository_token: ${{ secrets.shamanops_manifest_repository_token }}
+      shamanops_chat_webhook: ${{ secrets.shamanops_chat_webhook }}
+      shamanops_registry_password: ${{ secrets.shamanops_registry_password }}
+      shamanops_dockerfile_token: ${{ secrets.shamanops_dockerfile_token }}
+##################################################################################################
+##################################################################################################
