@@ -29,7 +29,7 @@ jobs:
   ##############################################################################
   # Stage 1 - Initialization
   ##############################################################################
-  winstall:
+  winit:
     name: "Installation & Setup"
     runs-on: ubuntu-latest
     steps:
@@ -43,11 +43,11 @@ jobs:
           sleep 2
 
   ##############################################################################
-  # Stage 2 - Build
+  # Stage 2 - Build & Version
   ##############################################################################
   wbuild:
     name: "Build Application"
-    needs: [winstall]
+    needs: [winit]
     runs-on: ubuntu-latest
     steps:
       - name: Simulate Build
@@ -69,6 +69,27 @@ jobs:
           name: build-artifacts
           path: dist/
           retention-days: 1
+
+  wversion:
+    name: "Version & Tag"
+    needs: [wbuild]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Simulate Versioning
+        run: |
+          echo "🏷️  Generating version..."
+          VERSION="${INPUT_VERSION:-1.0.${GITHUB_RUN_NUMBER}}"
+          echo "Version: ${VERSION}"
+          echo "Commit: ${GITHUB_SHA:0:8}"
+          echo "Branch: ${GITHUB_REF_NAME}"
+          sleep 2
+          echo ""
+          echo "📦 Creating release artifact..."
+          echo "  ✓ Version tagged: ${VERSION}"
+          echo "  ✓ Release notes generated"
+          echo "  ✓ Changelog updated"
+          echo ""
+          echo "✅ Versioning completed"
 
   ##############################################################################
   # Stage 3 - Tests & Analysis (Parallel)
@@ -127,22 +148,25 @@ jobs:
           echo ""
           echo "✅ Linting passed"
 
-  wsecurity:
-    name: "Security Scan"
+  wsca:
+    name: "Security Scan (SCA)"
     needs: [wbuild]
     runs-on: ubuntu-latest
     steps:
       - name: Simulate Security Scan
         run: |
-          echo "🔒 Running security audit..."
+          echo "🔒 Running SCA (Software Composition Analysis)..."
           echo "Scanning dependencies..."
           sleep 3
-          echo "  ✓ 0 vulnerabilities found"
+          echo "  ✓ 0 critical vulnerabilities"
+          echo "  ✓ 0 high vulnerabilities"
+          echo "  ✓ 2 medium vulnerabilities (non-blocking)"
           echo ""
           echo "🔒 Running SAST analysis..."
           sleep 2
           echo "  ✓ No security issues detected"
           echo "  ✓ No hardcoded secrets found"
+          echo "  ✓ No SQL injection vectors"
           echo ""
           echo "✅ Security scan passed"
 
@@ -151,7 +175,7 @@ jobs:
   ##############################################################################
   wsonar:
     name: "SonarQube Analysis"
-    needs: [wtest, wlint, wsecurity]
+    needs: [wtest, wlint, wsca]
     runs-on: ubuntu-latest
     steps:
       - name: Download Coverage Report
@@ -179,6 +203,9 @@ jobs:
           echo "  ✓ Security: A"
           echo "  ✓ Duplications: 2.3%"
           echo "  ✓ Technical Debt: 2h 15m"
+          echo "  ✓ Code Smells: 12"
+          echo "  ✓ Bugs: 0"
+          echo "  ✓ Vulnerabilities: 0"
           echo ""
           echo "✅ Quality Gate PASSED"
 
@@ -187,7 +214,7 @@ jobs:
   ##############################################################################
   wdeploy-dev:
     name: "Deploy to DEV"
-    needs: [wsonar]
+    needs: [wsonar, wversion]
     if: ${{ always() && !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     environment:
@@ -211,6 +238,8 @@ jobs:
           echo "🚀 Deploying to DEV environment..."
           echo "Environment: development"
           echo "Region: us-east-1"
+          VERSION="${INPUT_VERSION:-1.0.${GITHUB_RUN_NUMBER}}"
+          echo "Version: ${VERSION}"
           sleep 3
           echo "  ✓ Lambda functions deployed"
           echo "  ✓ API Gateway configured"
@@ -289,6 +318,8 @@ jobs:
           echo "🚀 Deploying to STAGING environment..."
           echo "Environment: staging"
           echo "Region: us-east-1"
+          VERSION="${INPUT_VERSION:-1.0.${GITHUB_RUN_NUMBER}}"
+          echo "Version: ${VERSION}"
           sleep 4
           echo "  ✓ Blue/Green deployment initiated"
           echo "  ✓ New version deployed to Green"
@@ -410,6 +441,8 @@ jobs:
           echo "Environment: production"
           echo "Region: Multi-region (us-east-1, eu-west-1)"
           echo "Strategy: Canary deployment"
+          VERSION="${INPUT_VERSION:-1.0.${GITHUB_RUN_NUMBER}}"
+          echo "Version: ${VERSION}"
           sleep 4
           echo ""
           echo "Canary Phase 1 (5% traffic):"
@@ -437,6 +470,7 @@ jobs:
           echo ""
           echo "✅ Deployment to PRODUCTION completed"
           echo "🌐 URL: https://wiru-app.com"
+          echo "📦 Version: ${VERSION}"
       
       - name: Smoke Tests
         run: |
@@ -486,6 +520,8 @@ jobs:
           echo "Commit: ${GITHUB_SHA:0:8}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Triggered by: ${{ github.actor }}"
+          VERSION="${INPUT_VERSION:-1.0.${GITHUB_RUN_NUMBER}}"
+          echo "Version: ${VERSION}"
           echo ""
           echo "Environments deployed:"
           echo "  ✓ DEV:  https://dev.wiru-app.com"
