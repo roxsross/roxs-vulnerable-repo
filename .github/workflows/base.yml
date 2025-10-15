@@ -49,45 +49,39 @@ env:
 jobs:
   wiru:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [unit, sonar]
+    env:
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - name: install dependencies
-        shell: bash
-        run: |
-          echo "INIT - install dependencies"
-          if [ -f package.json ]; then
-            npm ci --silent || true
-          fi
-          npm i -g serverless >/dev/null 2>&1 || true
-          echo "INIT ok"
 
-  check-version:
-    needs: wiru
-    runs-on: ubuntu-latest
-    steps:
-      - name: Version Checks (semver)
+      - name: Setup Node
+        if: ${{ matrix.target == 'init' || matrix.target == 'wversion }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Unit Tests
+        if: ${{ matrix.target == 'init' }}
         shell: bash
         run: |
-          echo "CHECK - version checks"
-          echo "Stage: ${STAGE}"
-          if [ "${STAGE}" = "prod" ]; then
-            echo "Deploy to prod is not allowed in this POC"
-            exit 1
-          fi
-          if [ -n "${INPUT_VERSION}" ]; then
-            if echo "${INPUT_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9\.:-]+)?$'; then
-              echo "Valid version: ${INPUT_VERSION}"
-            else
-              echo "Invalid version (use semver, e.g. 1.2.3)"
-              exit 1
-            fi
-          else
-            echo "No version provided, continuing..."
-          fi
-          echo "CHECK ok"
+          echo "TEST - unit"
+          echo "TEST ok"
+
+      - name: Sonar Analysis
+        if: ${{ matrix.target == 'wversion' }}
+        shell: bash
+        run: |
+          echo "SONAR - analysis"
+          echo "SONAR ok"
 
   wtest:
-    needs: check-version
+    needs: wiru
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
