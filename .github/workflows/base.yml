@@ -6,10 +6,6 @@ on:
 permissions:
   contents: read
 
-defaults:
-  run:
-    shell: bash
-
 env:
   APP_NAME: ${{ github.event.inputs.app-name || 'my-app' }}
   STAGE: ${{ github.event.inputs.stage || 'dev' }}
@@ -30,23 +26,29 @@ jobs:
   wtest:
     needs: init
     runs-on: ubuntu-latest
+    outputs:
+      test_status: ${{ steps.test.outcome }}
     strategy:
-      fail-fast: false
       matrix: { target: [wtest, wsonar] }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Node
-        if: ${{ matrix.target == 'west' || matrix.target == 'wsonar' }}
+        if: matrix.target == 'wtest' || matrix.target == 'wsonar'
         uses: actions/setup-node@v4
         with: { node-version: '20' }
+      
       - name: Unit Tests
-        if: ${{ matrix.target == 'west' }}
-        shell: bash
+        id: test
+        if: matrix.target == 'wtest'
+        run: echo "UNIT TESTS"
+      
+      - name: Wait for wtest
+        if: matrix.target == 'wsonar'
         run: |
-          echo "UNIT TESTS"
-      - name: SonarQube Analysis
-        if: ${{ matrix.target == 'wsonar' }}
-        shell: bash
-        run: |
-          echo "SONAR (placeholder)"
+          # Esto NO funciona porque los jobs de matriz son independientes
+          echo "Cannot wait for parallel job"
+      
+      - name: SonarQube
+        if: matrix.target == 'wsonar'
+        run: echo "SONAR"
 
