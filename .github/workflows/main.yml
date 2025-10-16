@@ -80,7 +80,7 @@ jobs:
           echo "APP_NAME: ${APP_NAME}"
           echo "STAGE: ${STAGE}"
           echo "VERSION: ${INPUT_VERSION}"
-          echo "✅ Dependencies would be installed here"
+          echo "✅ Workflow initialized"
           sleep 2
 
   ##############################################################################
@@ -111,51 +111,11 @@ jobs:
           fi
 
   ##############################################################################
-  # Stage 3 - Build
-  ##############################################################################
-  wbuild:
-    name: "Build Application"
-    needs: [winit]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Simulate Build
-        run: |
-          echo "🔨 Building serverless application..."
-          echo "Installing dependencies..."
-          # npm ci
-          sleep 2
-          echo "Compiling TypeScript..."
-          # npm run build
-          sleep 2
-          echo "✅ Build completed"
-      
-      - name: Create Build Artifacts
-        run: |
-          mkdir -p dist
-          echo "build-${GITHUB_SHA}" > dist/build.txt
-          echo "✅ Artifacts created"
-      
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts-${{ env.STAGE }}
-          path: dist/
-          retention-days: 7
-
-  ##############################################################################
-  # Stage 4 - Parallel Testing
+  # Stage 3 - Parallel Testing
   ##############################################################################
   wtest:
     name: "Unit Tests (Node ${{ matrix.node }})"
-    needs: [wbuild]
+    needs: [winit]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -180,7 +140,7 @@ jobs:
 
   wcoverage:
     name: "Test Coverage"
-    needs: [wbuild]
+    needs: [winit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -216,7 +176,7 @@ jobs:
 
   wlint:
     name: "Code Linting"
-    needs: [wbuild]
+    needs: [winit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -237,7 +197,7 @@ jobs:
 
   wsca:
     name: "Security Scan (SCA)"
-    needs: [wbuild]
+    needs: [winit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -256,7 +216,7 @@ jobs:
           echo "✅ No critical vulnerabilities"
 
   ##############################################################################
-  # Stage 5 - Code Quality (depends on coverage)
+  # Stage 4 - Code Quality (depends on coverage)
   ##############################################################################
   wsonar:
     name: "SonarQube Analysis"
@@ -285,329 +245,4 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           echo "📊 Running SonarQube analysis..."
-          echo "Project: ${APP_NAME}"
-          sleep 3
-          echo ""
-          echo "Quality Gate Results:"
-          echo "  ✓ Code Coverage: 87.5%"
-          echo "  ✓ Maintainability: A"
-          echo "  ✓ Reliability: A"
-          echo "  ✓ Security: A"
-          echo ""
-          echo "✅ Quality Gate PASSED"
-          # sonar-scanner \
-          #   -Dsonar.projectKey=${APP_NAME} \
-          #   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-
-  ##############################################################################
-  # Stage 6 - Serverless Deploy
-  ##############################################################################
-  wsls-deploy:
-    name: "Serverless Deploy (${{ inputs.stage || 'dev' }})"
-    needs: [wsonar, wtest, wversion]
-    if: ${{ !inputs.do-remove && !inputs.do-rollback }}
-    runs-on: ubuntu-latest
-    environment: 
-      name: ${{ inputs.stage || 'dev' }}
-      url: https://${{ inputs.stage || 'dev' }}.wiru-app.com
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts-${{ env.STAGE }}
-          path: dist/
-        continue-on-error: true
-      
-      - name: Configure AWS Credentials
-        run: |
-          echo "🔐 Configuring AWS credentials..."
-          # Configure AWS credentials here
-          echo "✅ AWS configured"
-      
-      - name: Serverless Deploy
-        run: |
-          echo "🚀 Serverless Framework - Deploying..."
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Environment: ${STAGE}"
-          echo "Application: ${APP_NAME}"
-          VERSION="${{ needs.wversion.outputs.version }}"
-          echo "Version: ${VERSION}"
-          echo "Region: us-east-1"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          sleep 2
-          
-          echo ""
-          echo "Serverless: Packaging service..."
-          echo "Serverless: Excluding development dependencies..."
-          sleep 2
-          
-          echo ""
-          echo "Serverless: Uploading CloudFormation file to S3..."
-          echo "Serverless: Uploading artifacts..."
-          echo "Serverless: Uploading service ${APP_NAME}.zip (2.3 MB)..."
-          sleep 3
-          
-          echo ""
-          echo "Serverless: Validating template..."
-          echo "Serverless: Updating Stack..."
-          sleep 2
-          
-          echo ""
-          echo "CloudFormation - Stack Update Progress:"
-          echo "  ✓ AWS::Lambda::Function - ${APP_NAME}-${STAGE}-api"
-          echo "  ✓ AWS::Lambda::Function - ${APP_NAME}-${STAGE}-worker"
-          echo "  ✓ AWS::ApiGatewayV2::Api - ${APP_NAME}-${STAGE}"
-          echo "  ✓ AWS::DynamoDB::Table - ${APP_NAME}-${STAGE}-users"
-          echo "  ✓ AWS::S3::Bucket - ${APP_NAME}-${STAGE}-uploads"
-          echo "  ✓ AWS::CloudWatch::LogGroup - /aws/lambda/${APP_NAME}-${STAGE}-api"
-          sleep 3
-          
-          echo ""
-          echo "Serverless: Stack update finished..."
-          echo ""
-          echo "Service Information:"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  service: ${APP_NAME}"
-          echo "  stage: ${STAGE}"
-          echo "  region: us-east-1"
-          echo "  stack: ${APP_NAME}-${STAGE}"
-          echo "  api endpoint: https://api-${STAGE}.wiru-app.com"
-          echo ""
-          echo "Functions:"
-          echo "  api: ${APP_NAME}-${STAGE}-api"
-          echo "  worker: ${APP_NAME}-${STAGE}-worker"
-          echo ""
-          echo "Endpoints:"
-          echo "  ANY - https://api-${STAGE}.wiru-app.com/{proxy+}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
-          echo ""
-          echo "✅ Deployment completed successfully!"
-          echo "🌐 URL: https://${STAGE}.wiru-app.com"
-          
-          # Real command:
-          # npm ci --production
-          # serverless deploy --stage "${STAGE}" --verbose
-
-  ##############################################################################
-  # Stage 7 - Serverless Rollback (Manual)
-  ##############################################################################
-  wsls-rollback:
-    name: "Serverless Rollback (${{ inputs.stage }})"
-    needs: [wsonar, wtest]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-rollback }}
-    runs-on: ubuntu-latest
-    environment: 
-      name: ${{ inputs.stage }}-rollback
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Configure AWS Credentials
-        run: |
-          echo "🔐 Configuring AWS credentials..."
-          echo "✅ AWS configured"
-      
-      - name: Serverless Rollback
-        run: |
-          echo "⏪ Starting Serverless Rollback..."
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Environment: ${STAGE}"
-          echo "Application: ${APP_NAME}"
-          ROLLBACK_TO="${{ inputs.rollback-to }}"
-          if [ -n "${ROLLBACK_TO}" ]; then
-            echo "Rollback to: ${ROLLBACK_TO}"
-          else
-            echo "Rollback to: Previous deployment"
-          fi
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          sleep 2
-          
-          echo ""
-          echo "Fetching deployment history..."
-          sleep 2
-          echo "  • Current: 2024-01-15T10:30:45Z"
-          echo "  • Previous: 2024-01-15T09:15:22Z"
-          echo "  • Previous-2: 2024-01-14T16:42:10Z"
-          
-          echo ""
-          echo "Serverless: Rolling back CloudFormation stack..."
-          sleep 2
-          
-          echo ""
-          echo "CloudFormation - Rollback Progress:"
-          echo "  ✓ Reverting Lambda function code"
-          echo "  ✓ Restoring API Gateway configuration"
-          echo "  ✓ Rolling back IAM roles"
-          sleep 2
-          echo "  ✓ Restoring environment variables"
-          echo "  ✓ Reverting CloudWatch alarms"
-          
-          echo ""
-          sleep 2
-          echo "Serverless: Rollback complete"
-          echo ""
-          echo "✅ Rollback completed successfully!"
-          echo "⚠️  Please verify the application is working correctly"
-          
-          # Real command:
-          # npm ci
-          # if [ -n "${ROLLBACK_TO}" ]; then
-          #   serverless rollback --timestamp "${ROLLBACK_TO}" --stage "${STAGE}"
-          # else
-          #   serverless rollback --stage "${STAGE}"
-          # fi
-      
-      - name: Verify Rollback
-        run: |
-          echo ""
-          echo "🔍 Verifying rollback..."
-          sleep 2
-          echo "  ✓ Lambda functions responding"
-          echo "  ✓ API Gateway accessible"
-          echo "  ✓ DynamoDB accessible"
-          echo ""
-          echo "✅ Rollback verification passed"
-      
-      - name: Notify Rollback
-        run: |
-          echo ""
-          echo "📢 Rollback notifications:"
-          echo "  • Slack: #deployments"
-          echo "  • Email: devops-team@wiru.com"
-          echo "  • PagerDuty: Incident logged"
-
-  ##############################################################################
-  # Stage 8 - Serverless Remove (Manual)
-  ##############################################################################
-  wsls-remove:
-    name: "Serverless Remove (${{ inputs.stage }})"
-    needs: [wsonar, wtest]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.do-remove }}
-    runs-on: ubuntu-latest
-    environment: 
-      name: ${{ inputs.stage }}-remove
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Configure AWS Credentials
-        run: |
-          echo "🔐 Configuring AWS credentials..."
-          echo "✅ AWS configured"
-      
-      - name: Serverless Remove
-        run: |
-          echo "🗑️  Starting Serverless Remove..."
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "⚠️  WARNING: This will delete all resources!"
-          echo "Environment: ${STAGE}"
-          echo "Application: ${APP_NAME}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          sleep 3
-          
-          echo ""
-          echo "Serverless: Removing service..."
-          sleep 2
-          
-          echo ""
-          echo "CloudFormation - Deletion Progress:"
-          echo "  ✓ Deleting Lambda functions"
-          echo "  ✓ Deleting API Gateway"
-          sleep 2
-          echo "  ✓ Deleting DynamoDB tables"
-          echo "  ✓ Deleting S3 buckets"
-          echo "  ✓ Deleting CloudWatch logs"
-          sleep 2
-          echo "  ✓ Deleting IAM roles"
-          echo "  ✓ Removing CloudFormation stack"
-          
-          echo ""
-          sleep 2
-          echo "Serverless: Service removed"
-          echo ""
-          echo "✅ All resources have been removed"
-          
-          # Real command:
-          # npm ci
-          # serverless remove --stage "${STAGE}" --verbose
-      
-      - name: Verify Removal
-        run: |
-          echo ""
-          echo "🔍 Verifying removal..."
-          sleep 2
-          echo "  ✓ CloudFormation stack: DELETED"
-          echo "  ✓ Lambda functions: DELETED"
-          echo "  ✓ API Gateway: DELETED"
-          echo ""
-          echo "✅ Removal verification passed"
-      
-      - name: Notify Removal
-        run: |
-          echo ""
-          echo "📢 Removal notifications:"
-          echo "  • Slack: #deployments"
-          echo "  • Email: devops-team@wiru.com"
-          echo "  ⚠️  Environment ${STAGE} has been completely removed"
-
-  ##############################################################################
-  # Stage 9 - Notifications
-  ##############################################################################
-  wnotify:
-    name: "Send Notifications"
-    needs: [wsls-deploy]
-    if: always() && !inputs.do-remove && !inputs.do-rollback
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deployment Summary
-        run: |
-          echo "================================================"
-          echo "      WIRU SERVERLESS DEPLOYMENT SUMMARY"
-          echo "================================================"
-          echo ""
-          echo "Pipeline ID: ${{ github.run_id }}"
-          echo "Commit: ${GITHUB_SHA:0:8}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Triggered by: ${{ github.actor }}"
-          echo "Environment: ${STAGE}"
-          echo ""
-          echo "✅ Deployment completed"
-          echo "🌐 URL: https://${STAGE}.wiru-app.com"
-          echo ""
-      
-      - name: Notify Success
-        if: ${{ needs.wsls-deploy.result == 'success' }}
-        run: |
-          echo "✅ DEPLOYMENT SUCCESSFUL!"
-          echo ""
-          echo "📢 Notifications sent to:"
-          echo "  • Slack: #deployments"
-          echo "  • Email: devops-team@wiru.com"
-      
-      - name: Notify Failure
-        if: ${{ needs.wsls-deploy.result == 'failure' }}
-        run: |
-          echo "❌ DEPLOYMENT FAILED!"
-          echo ""
-          echo "🚨 Notifications sent to:"
-          echo "  • Slack: #incidents"
-          echo "  • Email: devops-team@wiru.com"
+          echo "P
